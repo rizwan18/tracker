@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES } from "./constants";
+import { BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES, PORTFOLIO_TYPES } from "./constants";
 
 export const registerSchema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -140,3 +140,15 @@ export const scheduleDetailsSchema = z.object({
   ownershipPercentage: z.coerce.number().min(0).max(100).optional(),
   availableForRentDate: z.coerce.date().nullable().optional(),
 });
+
+export const portfolioSchema = z.object({
+  type: z.enum(PORTFOLIO_TYPES),
+  name: z.string().trim().min(1, "Please give this portfolio a name.").max(100),
+});
+
+/** The setup page: one or more portfolios, at most one of each type. */
+export const portfolioSetupSchema = z
+  .object({ portfolios: z.array(portfolioSchema).min(1, "Please choose at least one portfolio type.").max(PORTFOLIO_TYPES.length) })
+  .refine((v) => new Set(v.portfolios.map((p) => p.type)).size === v.portfolios.length, { message: "Choose each type only once during setup." });
+
+export const portfolioRenameSchema = z.object({ name: z.string().trim().min(1, "Please give this portfolio a name.").max(100) });

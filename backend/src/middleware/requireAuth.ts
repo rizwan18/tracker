@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyAuthToken } from "../lib/auth";
 import { prisma } from "../lib/prisma";
+import { chooseHousehold } from "../lib/portfolios";
 
 export interface AuthedRequest extends Request {
   userId?: string;
@@ -27,8 +28,18 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     if (!user) {
       return res.status(401).json({ error: "Your session has expired. Please sign in again." });
     }
+    // A person can belong to several portfolios; the browser says which one it is
+    // working in (per tab) and we only believe it if they're a member.
+    const requested = req.headers["x-portfolio-id"];
+    const choice = await chooseHousehold(typeof requested === "string" ? requested : undefined, user.householdId, async (householdId) => {
+      const member = await prisma.portfolioMember.findUnique({ where: { userId_householdId: { userId: user.id, householdId } } });
+      return !!member;
+    });
+    if ("forbidden" in choice) {
+      return res.status(403).json({ error: "You don't have access to that portfolio." });
+    }
     req.userId = user.id;
-    req.householdId = user.householdId;
+    req.householdId = choice.householdId;
     next();
   } catch {
     return res.status(401).json({ error: "Your session has expired. Please sign in again." });

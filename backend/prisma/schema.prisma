@@ -31,13 +31,21 @@ datasource db {
 // People & households
 // ---------------------------------------------------------------------------
 
+/// A household is one "portfolio": a separate set of accounts, transactions,
+/// properties, investments, bills… A person can belong to several (e.g. their
+/// own finances plus a company and a trust) via PortfolioMember.
 model Household {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  portfolioType String   @default("PERSONAL") // PERSONAL | COMPANY | TRUST | OTHER
+  /// false only between registering and finishing the setup page; lets the setup
+  /// page choose the type of a brand-new portfolio but never re-type an established one.
+  setupComplete Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  members       User[]
+  members          User[]
+  portfolioMembers PortfolioMember[]
   accounts      Account[]
   categories    Category[]
   transactions  Transaction[]
@@ -62,11 +70,27 @@ model User {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  portfolios         PortfolioMember[]
   transactions       Transaction[]
   propertyOwnerships PropertyOwnership[]
   notifications      Notification[]
   passwordResets     PasswordResetToken[]
 
+  @@index([householdId])
+}
+
+/// Which portfolios (households) a person can open. `User.householdId` is their
+/// default one; this table lists all of them, including the default.
+model PortfolioMember {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  role        String    @default("PRIMARY") // PRIMARY | PARTNER
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, householdId])
   @@index([householdId])
 }
 

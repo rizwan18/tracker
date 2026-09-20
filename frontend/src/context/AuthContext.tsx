@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, getToken, setToken } from "../api/client";
+import { api, getToken, setToken, setActivePortfolioId } from "../api/client";
 import type { User } from "../api/types";
 
 interface AuthContextValue {
@@ -49,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     setToken(null);
+    setActivePortfolioId(null);
     setUser(null);
   }, []);
 

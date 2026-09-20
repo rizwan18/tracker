@@ -9,11 +9,13 @@ type IdRow = { id: string };
 
 /** Reads what the importer needs to know about the household: its categories/accounts, and which ids already exist. */
 export async function loadImportContext(householdId: string, userId: string, candidates: Record<IdTable, string[]>): Promise<ImportContext> {
-  const [user, categories, accounts, ppr] = await Promise.all([
+  const [user, household, categories, accounts, ppr] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } }),
+    prisma.household.findUniqueOrThrow({ where: { id: householdId }, select: { portfolioType: true } }),
     prisma.category.findMany({ where: { householdId }, select: { id: true, name: true, direction: true } }),
     prisma.account.findMany({ where: { householdId }, select: { id: true, name: true, type: true } }),
-    prisma.property.findFirst({ where: { householdId, propertyType: "PPR", owners: { some: { userId } } }, select: { id: true, name: true } }),
+    // one PPR per person across all their portfolios
+    prisma.property.findFirst({ where: { propertyType: "PPR", owners: { some: { userId } } }, select: { id: true, name: true } }),
   ]);
 
   const sel = { select: { id: true } } as const;
@@ -56,7 +58,7 @@ export async function loadImportContext(householdId: string, userId: string, can
     })
   );
 
-  return { householdId, userId, userEmail: user.email, categories, accounts, ppr, exists };
+  return { householdId, userId, userEmail: user.email, portfolioType: household.portfolioType, categories, accounts, ppr, exists };
 }
 
 const BATCH = 1000;

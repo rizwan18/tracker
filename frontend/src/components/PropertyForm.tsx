@@ -1,14 +1,19 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { usePortfolio } from "../context/PortfolioContext";
 import type { Property } from "../api/types";
 import { Button, Field, inputClass } from "./ui";
 import { toInputDate } from "../lib/format";
 import { PROPERTY_TYPE_INFO, type PropertyType } from "../lib/propertyType";
 
 export function PropertyForm({ initial, onSaved, onCancel }: { initial?: Property; onSaved: () => void; onCancel: () => void }) {
+  // A principal place of residence only exists in a Personal Finance portfolio; companies,
+  // trusts and other portfolios just hold investment properties, so the question isn't asked there.
+  const { active } = usePortfolio();
+  const allowPpr = !active || active.type === "PERSONAL";
   // New properties start with nothing selected so the question is always answered on purpose.
-  const [propertyType, setPropertyType] = useState<PropertyType | "">(initial ? (initial.propertyType === "PPR" ? "PPR" : "INVESTMENT") : "");
+  const [propertyType, setPropertyType] = useState<PropertyType | "">(initial ? (initial.propertyType === "PPR" ? "PPR" : "INVESTMENT") : allowPpr ? "" : "INVESTMENT");
   const [name, setName] = useState(initial?.name ?? "");
   const [address, setAddress] = useState(initial?.address ?? "");
   const [purchaseDate, setPurchaseDate] = useState(toInputDate(initial?.purchaseDate));
@@ -86,6 +91,7 @@ export function PropertyForm({ initial, onSaved, onCancel }: { initial?: Propert
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && <p className="text-sm text-[var(--color-brick)] bg-[var(--color-brick-tint)] rounded-lg px-3 py-2">{error}</p>}
 
+      {allowPpr && (
       <fieldset>
         <legend className="block text-sm font-medium text-[var(--color-ink)] mb-1">What kind of property is this?</legend>
         <div className="grid sm:grid-cols-2 gap-3">
@@ -113,6 +119,7 @@ export function PropertyForm({ initial, onSaved, onCancel }: { initial?: Propert
           })}
         </div>
       </fieldset>
+      )}
 
       <Field label="Property name" htmlFor="p-name" hint={isPpr ? "e.g. “Family home” — just for your own reference." : "e.g. “Smith Street rental” — just for your own reference."}>
         <input id="p-name" required className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />

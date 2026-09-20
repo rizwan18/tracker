@@ -6,6 +6,29 @@ const TOKEN_KEY = "ret_token";
 // VITE_API_BASE_URL if the API is deliberately hosted on a different domain.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || "";
 
+const PORTFOLIO_KEY = "ret_portfolio";
+
+/**
+ * Which portfolio this browser tab is working in. Kept per tab (sessionStorage) so a
+ * new sign-in or a new tab asks again, and two tabs can show two different portfolios.
+ */
+export function getActivePortfolioId(): string | null {
+  try {
+    return sessionStorage.getItem(PORTFOLIO_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setActivePortfolioId(id: string | null) {
+  try {
+    if (id) sessionStorage.setItem(PORTFOLIO_KEY, id);
+    else sessionStorage.removeItem(PORTFOLIO_KEY);
+  } catch {
+    /* storage unavailable — the default portfolio is used */
+  }
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -28,6 +51,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(getActivePortfolioId() ? { "X-Portfolio-Id": getActivePortfolioId() as string } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 

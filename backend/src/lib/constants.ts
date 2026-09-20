@@ -123,6 +123,10 @@ export type DividendStatus = (typeof DIVIDEND_STATUSES)[number];
 export const ACCOUNT_TYPES = ["BANK", "OFFSET", "CREDIT_CARD", "CASH", "OTHER"] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
+/** What a portfolio is for. PERSONAL is the only type that can have a principal place of residence. */
+export const PORTFOLIO_TYPES = ["PERSONAL", "COMPANY", "TRUST", "OTHER"] as const;
+export type PortfolioType = (typeof PORTFOLIO_TYPES)[number];
+
 /** INVESTMENT = rental/investment property; PPR = principal place of residence (the family home). */
 export const PROPERTY_TYPES = ["INVESTMENT", "PPR"] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];

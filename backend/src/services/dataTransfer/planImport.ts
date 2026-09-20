@@ -9,6 +9,8 @@ export interface ImportContext {
   householdId: string;
   userId: string;
   userEmail: string;
+  /** What kind of portfolio is being imported into (only PERSONAL can have a PPR). */
+  portfolioType: string;
   /** The household's categories and accounts, so the file's ones can be matched by name instead of duplicated. */
   categories: Array<{ id: string; name: string; direction: string }>;
   accounts: Array<{ id: string; name: string; type: string }>;
@@ -325,7 +327,11 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
         };
         if (r.failed) return null;
         // Business rule: a person can only have one principal place of residence.
-        if (propertyType === "PPR") {
+        if (propertyType === "PPR" && ctx.portfolioType !== "PERSONAL") {
+          warn(r, `a principal place of residence can only be recorded in a Personal Finance portfolio, so “${name}” was imported as an investment property.`);
+          propertyType = "INVESTMENT";
+          rec.propertyType = "INVESTMENT";
+        } else if (propertyType === "PPR") {
           if (pprTaken && !ctx.exists.properties.inHousehold.has(id)) {
             warn(r, `you already have a principal place of residence (“${pprTaken.name}”), so “${name}” was imported as an investment property. You can change it later.`);
             propertyType = "INVESTMENT";

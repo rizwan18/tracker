@@ -1,12 +1,15 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { PortfolioProvider } from "./context/PortfolioContext";
 import { FinancialYearProvider } from "./context/FinancialYearContext";
 import { RequireAuth } from "./components/RequireAuth";
+import { RequirePortfolio } from "./components/RequirePortfolio";
 import { AppShell } from "./components/AppShell";
 
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import OnboardingPage from "./pages/OnboardingPage";
+import SelectPortfolioPage from "./pages/SelectPortfolioPage";
 import DashboardPage from "./pages/DashboardPage";
 import MoneyPage from "./pages/MoneyPage";
 import PropertiesPage from "./pages/PropertiesPage";
@@ -22,6 +25,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <PortfolioProvider>
         <FinancialYearProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -35,9 +39,19 @@ export default function App() {
               }
             />
             <Route
+              path="/select-portfolio"
               element={
                 <RequireAuth>
-                  <AppShell />
+                  <SelectPortfolioPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              element={
+                <RequireAuth>
+                  <RequirePortfolio>
+                    <AppShell />
+                  </RequirePortfolio>
                 </RequireAuth>
               }
             >
@@ -54,6 +68,7 @@ export default function App() {
             </Route>
           </Routes>
         </FinancialYearProvider>
+        </PortfolioProvider>
       </AuthProvider>
     </BrowserRouter>
   );

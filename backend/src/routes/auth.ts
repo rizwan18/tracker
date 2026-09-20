@@ -4,7 +4,7 @@ import { hashPassword, verifyPassword, signAuthToken, generatePasswordResetToken
 import { registerSchema, loginSchema, requestPasswordResetSchema, resetPasswordSchema } from "../lib/validation";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
-import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from "../lib/constants";
+import { seedDefaultCategories } from "../lib/seedCategories";
 
 const router = Router();
 
@@ -18,7 +18,9 @@ router.post(
     }
 
     const household = await prisma.household.create({
-      data: { name: data.householdName || `${data.fullName}'s household` },
+      // Starts as a personal portfolio; the setup page (right after registering) lets the
+      // person choose the type(s) they actually want.
+      data: { name: data.householdName || `${data.fullName}'s household`, portfolioType: "PERSONAL", setupComplete: false },
     });
 
     const passwordHash = await hashPassword(data.password);
@@ -32,13 +34,10 @@ router.post(
       },
     });
 
+    await prisma.portfolioMember.create({ data: { userId: user.id, householdId: household.id, role: "PRIMARY" } });
+
     // Seed the default Australian income/expense categories for this new household.
-    await prisma.category.createMany({
-      data: [
-        ...INCOME_CATEGORIES.map((name) => ({ name, direction: "INCOME" as const, householdId: household.id })),
-        ...EXPENSE_CATEGORIES.map((name) => ({ name, direction: "EXPENSE" as const, householdId: household.id })),
-      ],
-    });
+    await seedDefaultCategories(prisma, household.id);
 
     const token = signAuthToken({ userId: user.id, householdId: household.id });
     res.status(201).json({

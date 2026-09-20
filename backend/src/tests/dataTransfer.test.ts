@@ -38,7 +38,7 @@ function sampleData(): ExportData {
 }
 
 function ctxFor(overrides: Partial<ImportContext> = {}): ImportContext {
-  return { householdId: "hB", userId: "uB", userEmail: "sam@example.com", categories: [], accounts: [], ppr: null, exists: emptyExistence(), ...overrides };
+  return { householdId: "hB", userId: "uB", userEmail: "sam@example.com", portfolioType: "PERSONAL", categories: [], accounts: [], ppr: null, exists: emptyExistence(), ...overrides };
 }
 
 function plan(csv: string, ctx = ctxFor(), includeProfile = true) {
@@ -170,6 +170,12 @@ describe("importing into an account that already has data", () => {
     const home = p.creates.properties.find((x) => x.name === "Family Home")!;
     expect(home.propertyType).toBe("INVESTMENT");
     expect(p.warnings.some((w) => w.includes("Current Home") && w.includes("investment property"))).toBe(true);
+  });
+
+  it("imports a PPR as an investment property into a company or trust portfolio", () => {
+    const { plan: p } = plan(csv, ctxFor({ portfolioType: "COMPANY" }));
+    expect(p.creates.properties.find((x) => x.name === "Family Home")!.propertyType).toBe("INVESTMENT");
+    expect(p.warnings.some((w) => w.includes("Personal Finance portfolio"))).toBe(true);
   });
 
   it("keeps the PPR when the person has none", () => {

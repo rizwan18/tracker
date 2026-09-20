@@ -260,3 +260,13 @@ export interface ImportResult {
   /** Rows actually written (only for a real import). */
   added: Record<string, number> | null;
 }
+
+export type PortfolioType = "PERSONAL" | "COMPANY" | "TRUST" | "OTHER";
+
+export interface Portfolio {
+  id: string;
+  name: string;
+  type: PortfolioType;
+  role: string;
+  isDefault: boolean;
+}
