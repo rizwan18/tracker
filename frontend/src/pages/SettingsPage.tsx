@@ -7,6 +7,7 @@ import { Button, Card, SectionHeading, inputClass } from "../components/ui";
 import { Modal } from "../components/Modal";
 import { PortfolioAddForm } from "../components/PortfolioAddForm";
 import { PortfolioTypeBadge } from "../components/PortfolioTypeBadge";
+import { BusinessProfileCard } from "../components/business/BusinessProfileCard";
 
 export default function SettingsPage() {
   const { user, updateUser, logout } = useAuth();
@@ -36,6 +37,8 @@ export default function SettingsPage() {
         <h3 className="font-display font-semibold mb-1">Your details</h3>
         <p className="text-sm text-[var(--color-ink-soft)] mb-3">{user?.fullName} · {user?.email}</p>
       </Card>
+
+      {active?.type === "COMPANY" && <BusinessProfileCard />}
 
       <Card>
         <div className="flex items-start justify-between gap-3">

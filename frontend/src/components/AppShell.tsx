@@ -15,6 +15,27 @@ const PRIMARY_NAV = [
   { to: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
+// Company Finance portfolios get bookkeeping in place of the personal money pages.
+const COMPANY_NAV = [
+  { to: "/", label: "Dashboard", icon: "🏠", end: true },
+  { to: "/business/sales", label: "Sales", icon: "💰" },
+  { to: "/business/expenses", label: "Expenses", icon: "💳" },
+  { to: "/business/reports", label: "Reports", icon: "📊" },
+  { to: "/business/accounts", label: "Accounts", icon: "📒" },
+  { to: "/business/journal", label: "Journal", icon: "✍️" },
+  { to: "/properties", label: "Properties", icon: "🏘" },
+  { to: "/investments", label: "Investments", icon: "📈" },
+  { to: "/settings", label: "Settings", icon: "⚙️" },
+];
+
+const COMPANY_MOBILE_NAV = [
+  { to: "/", label: "Home", icon: "🏠", end: true },
+  { to: "/business/sales", label: "Sales", icon: "💰" },
+  { to: "/business/expenses", label: "Expenses", icon: "💳" },
+  { to: "/business/reports", label: "Reports", icon: "📊" },
+  { to: "/settings", label: "More", icon: "⚙️" },
+];
+
 // A shorter set for the mobile bottom bar (section 5: "simplified navigation").
 const MOBILE_NAV = [
   { to: "/", label: "Home", icon: "🏠", end: true },
@@ -28,6 +49,9 @@ export function AppShell() {
   const { user, logout } = useAuth();
   const { active, portfolios } = usePortfolio();
   const canSwitch = portfolios.length > 1;
+  const isCompany = active?.type === "COMPANY";
+  const primaryNav = isCompany ? COMPANY_NAV : PRIMARY_NAV;
+  const mobileNav = isCompany ? COMPANY_MOBILE_NAV : MOBILE_NAV;
 
   return (
     <div className={`min-h-screen flex ${user?.easyViewEnabled ? "easy-view" : ""}`}>
@@ -36,7 +60,7 @@ export function AppShell() {
       </a>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:flex-col md:w-60 border-r border-[var(--color-line)] bg-white px-4 py-6 shrink-0">
+      <aside className="print:hidden hidden md:flex md:flex-col md:w-60 border-r border-[var(--color-line)] bg-white px-4 py-6 shrink-0">
         <div className="font-display text-lg font-semibold text-[var(--color-eucalyptus)] px-2 mb-4">Revenue Expense Tracker</div>
         {active && (
           <div className="mx-2 mb-6 rounded-xl bg-[var(--color-paper-dim)] px-3 py-2">
@@ -54,7 +78,7 @@ export function AppShell() {
           </div>
         )}
         <nav className="flex flex-col gap-1 flex-1" aria-label="Primary">
-          {PRIMARY_NAV.map((item) => (
+          {primaryNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -80,7 +104,7 @@ export function AppShell() {
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="flex items-center justify-between gap-4 border-b border-[var(--color-line)] bg-white px-4 md:px-8 py-4">
+        <header className="print:hidden flex items-center justify-between gap-4 border-b border-[var(--color-line)] bg-white px-4 md:px-8 py-4">
           <div className="md:hidden min-w-0">
             <div className="font-display text-lg font-semibold text-[var(--color-eucalyptus)] leading-tight">Revenue Expense Tracker</div>
             {active && (
@@ -109,10 +133,10 @@ export function AppShell() {
 
       {/* Mobile bottom nav */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--color-line)] flex justify-around py-2 z-20"
+        className="print:hidden md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--color-line)] flex justify-around py-2 z-20"
         aria-label="Primary"
       >
-        {MOBILE_NAV.map((item) => (
+        {mobileNav.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

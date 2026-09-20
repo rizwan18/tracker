@@ -10,7 +10,12 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import SelectPortfolioPage from "./pages/SelectPortfolioPage";
-import DashboardPage from "./pages/DashboardPage";
+import HomePage from "./pages/HomePage";
+import { RequireCompany } from "./components/RequireCompany";
+import BusinessEntriesPage from "./pages/business/BusinessEntriesPage";
+import BusinessAccountsPage from "./pages/business/BusinessAccountsPage";
+import BusinessJournalPage from "./pages/business/BusinessJournalPage";
+import BusinessReportsPage from "./pages/business/BusinessReportsPage";
 import MoneyPage from "./pages/MoneyPage";
 import PropertiesPage from "./pages/PropertiesPage";
 import PropertyDetailPage from "./pages/PropertyDetailPage";
@@ -55,7 +60,12 @@ export default function App() {
                 </RequireAuth>
               }
             >
-              <Route path="/" element={<DashboardPage />} />
+              <Route path="/" element={<HomePage />} />
+              <Route path="/business/sales" element={<RequireCompany><BusinessEntriesPage kind="INCOME" /></RequireCompany>} />
+              <Route path="/business/expenses" element={<RequireCompany><BusinessEntriesPage kind="EXPENSE" /></RequireCompany>} />
+              <Route path="/business/reports" element={<RequireCompany><BusinessReportsPage /></RequireCompany>} />
+              <Route path="/business/accounts" element={<RequireCompany><BusinessAccountsPage /></RequireCompany>} />
+              <Route path="/business/journal" element={<RequireCompany><BusinessJournalPage /></RequireCompany>} />
               <Route path="/money" element={<MoneyPage />} />
               <Route path="/properties" element={<PropertiesPage />} />
               <Route path="/properties/:id" element={<PropertyDetailPage />} />

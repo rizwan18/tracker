@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { isValidAbn, normaliseAbn } from "./abn";
+import { GST_MODES } from "../services/business/gst";
+import { ACCOUNT_GROUPS, ACCOUNT_TYPES_LEDGER, GROUPS_BY_TYPE } from "../services/business/chart";
 import { BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES, PORTFOLIO_TYPES } from "./constants";
 
 export const registerSchema = z.object({
@@ -152,3 +155,80 @@ export const portfolioSetupSchema = z
   .refine((v) => new Set(v.portfolios.map((p) => p.type)).size === v.portfolios.length, { message: "Choose each type only once during setup." });
 
 export const portfolioRenameSchema = z.object({ name: z.string().trim().min(1, "Please give this portfolio a name.").max(100) });
+
+// ---------------------------------------------------------------------------
+// Small-business accounting
+// ---------------------------------------------------------------------------
+/** Largest amount accepted in one entry: $19,000,000 (money is stored as whole cents in a 32-bit column). */
+export const MAX_ENTRY_CENTS = 1_900_000_000;
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-09-19.");
+export const isoDaySchema = isoDay;
+
+export const businessProfileSchema = z.object({
+  businessName: z.string().trim().min(1, "Please enter the business name.").max(120),
+  abn: z
+    .string()
+    .trim()
+    .max(20)
+    .optional()
+    .nullable()
+    .refine((v) => !v || isValidAbn(v), { message: "That ABN doesn't look right — an ABN has 11 digits." })
+    .transform((v) => (v ? normaliseAbn(v) : null)),
+  entityType: z.enum(["COMPANY", "SOLE_TRADER", "PARTNERSHIP", "TRUST"]).default("COMPANY"),
+  gstRegistered: z.boolean().default(false),
+  gstBasis: z.enum(["ACCRUAL", "CASH"]).default("ACCRUAL"),
+});
+
+export const businessEntrySchema = z
+  .object({
+    kind: z.enum(["INCOME", "EXPENSE"]),
+    date: z.coerce.date(),
+    dueDate: z.coerce.date().nullable().optional(),
+    description: z.string().trim().min(1, "Please describe it.").max(300),
+    contactName: z.string().trim().max(150).nullable().optional(),
+    reference: z.string().trim().max(60).nullable().optional(),
+    accountId: z.string().min(1, "Please choose a category."),
+    /** The amount as typed, in cents; GST is added or extracted according to gstMode. */
+    amountCents: z.number().int("Amounts are in whole cents.").min(1, "The amount must be more than zero.").max(MAX_ENTRY_CENTS, "That amount is too large."),
+    gstMode: z.enum(GST_MODES).default("INCLUSIVE"),
+    status: z.enum(["PAID", "UNPAID"]).default("PAID"),
+    paidDate: z.coerce.date().nullable().optional(),
+    bankAccountId: z.string().nullable().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+  })
+  .refine((v) => v.status !== "PAID" || (!!v.bankAccountId && !!v.paidDate), { message: "Choose the bank account and the date it was paid." });
+
+export const businessPaySchema = z.object({ paidDate: z.coerce.date(), bankAccountId: z.string().min(1, "Choose the bank account.") });
+
+export const ledgerAccountSchema = z
+  .object({
+    code: z.string().trim().regex(/^[0-9A-Za-z.\-]{1,10}$/, "Use up to 10 letters or numbers for the code."),
+    name: z.string().trim().min(1, "Please name the account.").max(80),
+    type: z.enum(ACCOUNT_TYPES_LEDGER),
+    group: z.enum(ACCOUNT_GROUPS),
+    isBank: z.boolean().default(false),
+  })
+  .refine((v) => (GROUPS_BY_TYPE[v.type] as readonly string[]).includes(v.group), { message: "That group doesn't fit the account type." });
+
+export const ledgerAccountUpdateSchema = z.object({
+  code: z.string().trim().regex(/^[0-9A-Za-z.\-]{1,10}$/, "Use up to 10 letters or numbers for the code.").optional(),
+  name: z.string().trim().min(1).max(80).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const manualJournalSchema = z.object({
+  date: z.coerce.date(),
+  description: z.string().trim().min(1, "Please describe the entry.").max(300),
+  reference: z.string().trim().max(60).nullable().optional(),
+  lines: z
+    .array(
+      z.object({
+        accountId: z.string().min(1),
+        debitCents: z.number().int().min(0).max(MAX_ENTRY_CENTS),
+        creditCents: z.number().int().min(0).max(MAX_ENTRY_CENTS),
+        memo: z.string().trim().max(200).nullable().optional(),
+      })
+    )
+    .min(2, "An entry needs at least two lines."),
+});

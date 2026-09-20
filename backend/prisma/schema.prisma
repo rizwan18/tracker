@@ -46,6 +46,10 @@ model Household {
 
   members          User[]
   portfolioMembers PortfolioMember[]
+  businessProfile  BusinessProfile?
+  ledgerAccounts   LedgerAccount[]
+  businessEntries  BusinessEntry[]
+  journalEntries   JournalEntry[]
   accounts      Account[]
   categories    Category[]
   transactions  Transaction[]
@@ -451,4 +455,110 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Small-business accounting (Company Finance portfolios)
+//
+// A double-entry ledger. Sales and expenses are entered as simple documents and
+// posted to the ledger automatically, so the income statement, balance sheet
+// and other reports always agree. All money in this section is stored as whole
+// cents (Int) so nothing is ever lost to floating-point rounding.
+// ---------------------------------------------------------------------------
+
+model BusinessProfile {
+  id            String    @id @default(cuid())
+  householdId   String    @unique
+  household     Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  businessName  String
+  abn           String?
+  entityType    String    @default("COMPANY") // COMPANY | SOLE_TRADER | PARTNERSHIP | TRUST
+  gstRegistered Boolean   @default(false)
+  gstBasis      String    @default("ACCRUAL") // ACCRUAL | CASH — how the GST (BAS) report is worked out
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+/// The chart of accounts.
+model LedgerAccount {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  type        String    // ASSET | LIABILITY | EQUITY | INCOME | EXPENSE
+  group       String    // CURRENT_ASSET | NON_CURRENT_ASSET | CURRENT_LIABILITY | NON_CURRENT_LIABILITY | EQUITY | REVENUE | COST_OF_SALES | OTHER_INCOME | OPERATING_EXPENSE
+  systemKey   String?   // ACCOUNTS_RECEIVABLE | ACCOUNTS_PAYABLE | GST_COLLECTED | GST_PAID | RETAINED_EARNINGS — accounts the app posts to itself
+  isBank      Boolean   @default(false) // money accounts (bank, cash, credit card) that entries can be paid from/to
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  lines         JournalLine[]
+  entries       BusinessEntry[] @relation("EntryAccount")
+  paidEntries   BusinessEntry[] @relation("EntryBank")
+
+  @@unique([householdId, code])
+  @@unique([householdId, systemKey])
+  @@index([householdId])
+}
+
+/// A sale/invoice (INCOME) or a bill/expense (EXPENSE), from which ledger journals are posted.
+model BusinessEntry {
+  id            String    @id @default(cuid())
+  householdId   String
+  household     Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  kind          String    // INCOME | EXPENSE
+  date          DateTime
+  dueDate       DateTime?
+  description   String
+  contactName   String?   // customer or supplier
+  reference     String?   // invoice / bill number
+  accountId     String    // income or expense (or fixed-asset) account
+  account       LedgerAccount @relation("EntryAccount", fields: [accountId], references: [id])
+  totalCents    Int       // including GST
+  gstCents      Int
+  gstMode       String    @default("INCLUSIVE") // INCLUSIVE | EXCLUSIVE | FREE — how the amount was entered
+  status        String    @default("PAID") // PAID | UNPAID
+  paidDate      DateTime?
+  bankAccountId String?
+  bankAccount   LedgerAccount? @relation("EntryBank", fields: [bankAccountId], references: [id])
+  notes         String?
+  createdById   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([householdId, date])
+  @@index([householdId, kind, status])
+}
+
+model JournalEntry {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  date        DateTime
+  description String
+  reference   String?
+  source      String    // ENTRY (posted from a sale/expense) | PAYMENT | MANUAL
+  sourceId    String?   // the BusinessEntry it came from, if any
+  createdById String
+  createdAt   DateTime  @default(now())
+
+  lines JournalLine[]
+
+  @@index([householdId, date])
+  @@index([sourceId])
+}
+
+model JournalLine {
+  id          String        @id @default(cuid())
+  entryId     String
+  entry       JournalEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     LedgerAccount @relation(fields: [accountId], references: [id])
+  debitCents  Int           @default(0)
+  creditCents Int           @default(0)
+  memo        String?
+
+  @@index([entryId])
+  @@index([accountId])
 }
