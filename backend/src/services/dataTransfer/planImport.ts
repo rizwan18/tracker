@@ -46,6 +46,7 @@ export interface ImportPlan {
     propertyOwnerships: Prisma.PropertyOwnershipCreateManyInput[];
     scheduleLines: Prisma.PropertyScheduleLineCreateManyInput[];
     yearDetails: Prisma.PropertyYearDetailCreateManyInput[];
+    photos: Prisma.PropertyPhotoCreateManyInput[];
     investments: Prisma.InvestmentCreateManyInput[];
     investmentTransactions: Prisma.InvestmentTransactionCreateManyInput[];
     dividends: Prisma.DividendCreateManyInput[];
@@ -110,7 +111,7 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
   const warnings: string[] = [];
   const summary = emptySummary();
   const creates: ImportPlan["creates"] = {
-    accounts: [], categories: [], properties: [], propertyOwnerships: [], scheduleLines: [], yearDetails: [], investments: [],
+    accounts: [], categories: [], properties: [], propertyOwnerships: [], scheduleLines: [], yearDetails: [], photos: [], investments: [],
     investmentTransactions: [], dividends: [], disposals: [], transactions: [], bills: [], reminders: [], documents: [],
   };
   const householdId = ctx.householdId;
@@ -324,6 +325,12 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
           availableForRentDate: r.date("available_for_rent_date"),
           scheduleInitialised: r.bool("schedule_initialised", false),
           notes: r.str("notes", 5000),
+          managerName: r.str("manager_name", 120),
+          managerCompany: r.str("manager_company", 120),
+          managerEmail: r.str("manager_email", 200),
+          managerPhone: r.str("manager_phone", 40),
+          managerAddress: r.str("manager_address", 300),
+          managerNotes: r.str("manager_notes", 2000),
         };
         if (r.failed) return null;
         // Business rule: a person can only have one principal place of residence.
@@ -416,6 +423,40 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
         return r.failed ? null : rec;
       },
       (rec) => creates.yearDetails.push(rec)
+    );
+  }
+
+  // ---- property pictures (links to image files already in storage) ---------------
+  const primarySeen = new Set<string>();
+  for (const row of rowsOf("property_photos")) {
+    const r = reader("property_photos", row);
+    addRow(
+      "property_photos",
+      r,
+      (id) => {
+        const propertyId = requiredRef("properties", r, "property_id", "property", "a property");
+        const filePath = r.requiredStr("file_path", 2000);
+        const thumbPath = r.str("thumb_path", 2000);
+        for (const [value, col] of [[filePath, "file_path"], [thumbPath, "thumb_path"]] as const) {
+          if (value && !/^https:\/\//i.test(value)) r.fail(`“${col}” must be an https:// link.`);
+        }
+        const contentType = r.oneOf("content_type", ["IMAGE/JPEG", "IMAGE/PNG", "IMAGE/WEBP"] as const, { required: true });
+        const wantsPrimary = r.bool("is_primary", false);
+        // Only one main picture per property, and never take the role over on a property that already exists.
+        const isPrimary = wantsPrimary && !!propertyId && !primarySeen.has(propertyId) && !ctx.exists.properties.inHousehold.has(propertyId);
+        if (isPrimary && propertyId) primarySeen.add(propertyId);
+        const rec = {
+          id,
+          propertyId: propertyId ?? "",
+          fileName: r.requiredStr("file_name", 200) ?? "",
+          contentType: contentType ? contentType.toLowerCase() : "image/jpeg",
+          filePath: filePath ?? "",
+          thumbPath,
+          isPrimary,
+        };
+        return r.failed ? null : rec;
+      },
+      (rec) => creates.photos.push(rec)
     );
   }
 

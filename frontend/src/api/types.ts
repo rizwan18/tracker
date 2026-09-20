@@ -110,6 +110,23 @@ export interface Property {
   rentalStartDate: string | null;
   availableForRentDate?: string | null;
   notes: string | null;
+  // Property manager / managing agent
+  managerName?: string | null;
+  managerCompany?: string | null;
+  managerEmail?: string | null;
+  managerPhone?: string | null;
+  managerAddress?: string | null;
+  managerNotes?: string | null;
+  /** The picture shown as the property's icon, if any. */
+  primaryPhotoId?: string | null;
+  photoCount?: number;
+}
+
+export interface PropertyPhoto {
+  id: string;
+  fileName: string;
+  isPrimary: boolean;
+  createdAt: string;
 }
 
 export interface PropertySummary {

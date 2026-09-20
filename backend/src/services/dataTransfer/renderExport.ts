@@ -1,4 +1,4 @@
-import type { Account, Bill, CapitalGainDisposal, Category, Dividend, Document, Investment, InvestmentTransaction, Property, PropertyScheduleLine, PropertyYearDetail, Reminder, Transaction } from "@prisma/client";
+import type { Account, Bill, CapitalGainDisposal, Category, Dividend, Document, Investment, InvestmentTransaction, Property, PropertyPhoto, PropertyScheduleLine, PropertyYearDetail, Reminder, Transaction } from "@prisma/client";
 import { escapeFormula, toCsv } from "../../lib/csv";
 import { EXPORT_FORMAT_TITLE, EXPORT_FORMAT_VERSION, SECTION_COLUMNS, SECTION_ORDER, type SectionName } from "./sections";
 
@@ -10,6 +10,7 @@ export interface ExportData {
   owners: Array<{ propertyId: string; email: string; percentage: number }>;
   scheduleLines: PropertyScheduleLine[];
   yearDetails: PropertyYearDetail[];
+  photos: PropertyPhoto[];
   investments: Investment[];
   investmentTransactions: InvestmentTransaction[];
   dividends: Dividend[];
@@ -43,13 +44,15 @@ export function renderExportCsv(data: ExportData, now: Date = new Date()): strin
     properties: data.properties.map((p) => [
       p.id, t(p.name), t(p.address), p.propertyType, d(p.purchaseDate), n(p.purchasePrice), n(p.currentEstimatedValue), n(p.loanBalance),
       n(p.loanInterestRate), t(p.rentalAgent), t(p.tenantName), n(p.rentAmount), id(p.rentFrequency), d(p.rentalStartDate),
-      d(p.availableForRentDate), b(p.scheduleInitialised), t(p.notes),
+      d(p.availableForRentDate), b(p.scheduleInitialised), t(p.notes), t(p.managerName), t(p.managerCompany), t(p.managerEmail), t(p.managerPhone),
+      t(p.managerAddress), t(p.managerNotes),
     ]),
     property_owners: data.owners.map((o) => [o.propertyId, nameOf(propertyName, o.propertyId), t(o.email), n(o.percentage)]),
     property_schedule_lines: data.scheduleLines.map((l) => [
       l.id, l.propertyId, nameOf(propertyName, l.propertyId), l.categoryId, nameOf(categoryName, l.categoryId), t(l.label), b(l.isManual), String(l.sortOrder),
     ]),
     property_year_details: data.yearDetails.map((y) => [y.id, y.propertyId, nameOf(propertyName, y.propertyId), y.financialYear, n(y.weeksRented)]),
+    property_photos: data.photos.map((x) => [x.id, x.propertyId, nameOf(propertyName, x.propertyId), t(x.fileName), x.contentType, x.filePath, id(x.thumbPath), b(x.isPrimary)]),
     investments: data.investments.map((i) => [i.id, t(i.name), t(i.ticker), i.type, t(i.notes), n(i.currentValueOverride)]),
     investment_transactions: data.investmentTransactions.map((x) => [
       x.id, x.investmentId, nameOf(investmentName, x.investmentId), x.type, d(x.date), n(x.quantity), n(x.pricePerUnit), n(x.brokerage), t(x.notes),

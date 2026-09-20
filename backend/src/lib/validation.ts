@@ -232,3 +232,29 @@ export const manualJournalSchema = z.object({
     )
     .min(2, "An entry needs at least two lines."),
 });
+
+/** Property manager / managing agent details. Empty strings are treated as "not set". */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Please keep this under ${max} characters.`)
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v : null));
+
+export const propertyManagerSchema = z.object({
+  managerName: optionalText(120),
+  managerCompany: optionalText(120),
+  managerEmail: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .nullable()
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: "That email address doesn't look right." })
+    .transform((v) => (v ? v : null)),
+  managerPhone: optionalText(40),
+  managerAddress: optionalText(300),
+  managerNotes: optionalText(2000),
+});

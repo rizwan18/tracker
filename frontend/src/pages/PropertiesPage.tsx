@@ -6,6 +6,7 @@ import { Button, Card, EmptyState, SectionHeading } from "../components/ui";
 import { Modal } from "../components/Modal";
 import { PropertyForm } from "../components/PropertyForm";
 import { PropertyTypeBadge, PropertyTypeLegend } from "../components/PropertyTypeBadge";
+import { PropertyIcon } from "../components/PropertyIcon";
 import { PROPERTY_TYPE_INFO, propertyTypeOf } from "../lib/propertyType";
 import { formatCurrency } from "../lib/format";
 
@@ -46,9 +47,12 @@ export default function PropertiesPage() {
               return (
                 <Link key={p.id} to={`/properties/${p.id}`}>
                   <Card className={`hover:shadow-md transition-shadow h-full ${info.accent}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="font-display text-lg font-semibold">{p.name}</h3>
-                      <PropertyTypeBadge type={type} />
+                    <div className="flex items-start gap-3">
+                      <PropertyIcon property={p} size={48} />
+                      <div className="flex-1 min-w-0 flex items-start justify-between gap-3">
+                        <h3 className="font-display text-lg font-semibold">{p.name}</h3>
+                        <PropertyTypeBadge type={type} />
+                      </div>
                     </div>
                     {p.address && <p className="text-sm text-[var(--color-ink-soft)]">{p.address}</p>}
                     <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">

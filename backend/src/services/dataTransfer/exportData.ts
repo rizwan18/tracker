@@ -5,7 +5,7 @@ export { renderExportCsv, type ExportData } from "./renderExport";
 
 /** Loads everything that belongs to a household (and the signed-in person's profile). */
 export async function loadExportData(householdId: string, userId: string): Promise<ExportData> {
-  const [user, household, accounts, categories, properties, owners, scheduleLines, yearDetails, investments, investmentTransactions, dividends, disposals, transactions, bills, reminders, documents] =
+  const [user, household, accounts, categories, properties, owners, scheduleLines, yearDetails, photos, investments, investmentTransactions, dividends, disposals, transactions, bills, reminders, documents] =
     await Promise.all([
       prisma.user.findUniqueOrThrow({ where: { id: userId } }),
       prisma.household.findUniqueOrThrow({ where: { id: householdId } }),
@@ -15,6 +15,7 @@ export async function loadExportData(householdId: string, userId: string): Promi
       prisma.propertyOwnership.findMany({ where: { property: { householdId } }, include: { user: { select: { email: true } } } }),
       prisma.propertyScheduleLine.findMany({ where: { property: { householdId } }, orderBy: [{ propertyId: "asc" }, { sortOrder: "asc" }] }),
       prisma.propertyYearDetail.findMany({ where: { property: { householdId } }, orderBy: [{ propertyId: "asc" }, { financialYear: "asc" }] }),
+      prisma.propertyPhoto.findMany({ where: { property: { householdId } }, orderBy: [{ propertyId: "asc" }, { createdAt: "asc" }] }),
       prisma.investment.findMany({ where: { householdId }, orderBy: { createdAt: "asc" } }),
       prisma.investmentTransaction.findMany({ where: { investment: { householdId } }, orderBy: { date: "asc" } }),
       prisma.dividend.findMany({ where: { investment: { householdId } }, orderBy: { createdAt: "asc" } }),
@@ -33,6 +34,7 @@ export async function loadExportData(householdId: string, userId: string): Promi
     owners: owners.map((o) => ({ propertyId: o.propertyId, email: o.user.email, percentage: o.percentage })),
     scheduleLines,
     yearDetails,
+    photos,
     investments,
     investmentTransactions,
     dividends,

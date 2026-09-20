@@ -11,6 +11,9 @@ import { RentalSchedule } from "../components/RentalSchedule";
 import { PropertyBills } from "../components/PropertyBills";
 import { PropertyUpcomingPayments } from "../components/PropertyUpcomingPayments";
 import { PropertyTypeBadge } from "../components/PropertyTypeBadge";
+import { PropertyIcon } from "../components/PropertyIcon";
+import { PropertyPhotos } from "../components/PropertyPhotos";
+import { PropertyManagerTab } from "../components/PropertyManagerTab";
 import { PROPERTY_TYPE_INFO, propertyTypeOf } from "../lib/propertyType";
 import { formatCurrency, formatDate } from "../lib/format";
 
@@ -23,6 +26,7 @@ const PPR_QUICK_ADD = {
 const TABS = [
   { id: "summary", label: "Summary" },
   { id: "income-expense", label: "Income/Expense" },
+  { id: "manager", label: "Property manager" },
   { id: "bills-reminders", label: "Bills & reminders" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -40,7 +44,6 @@ export default function PropertyDetailPage() {
 
   // The chosen tab lives in the URL (?tab=…) so it survives a refresh and can be linked to.
   const requestedTab = searchParams.get("tab");
-  const tab: TabId = TABS.some((t) => t.id === requestedTab) ? (requestedTab as TabId) : "summary";
   function selectTab(next: TabId) {
     setSearchParams(next === "summary" ? {} : { tab: next }, { replace: true });
   }
@@ -67,6 +70,9 @@ export default function PropertyDetailPage() {
   const { property } = summary;
   const type = propertyTypeOf(property);
   const isPpr = type === "PPR";
+  // Your own home doesn't have a managing agent, so that tab is only for investment properties.
+  const visibleTabs = TABS.filter((t) => !(isPpr && t.id === "manager"));
+  const tab: TabId = visibleTabs.some((t) => t.id === requestedTab) ? (requestedTab as TabId) : "summary";
 
   function handleEntriesChanged() {
     setVersion((v) => v + 1);
@@ -78,6 +84,7 @@ export default function PropertyDetailPage() {
       <SectionHeading
         title={
           <span className="flex flex-wrap items-center gap-3">
+            <PropertyIcon property={property} size={56} />
             {property.name}
             <PropertyTypeBadge type={type} full />
           </span>
@@ -95,10 +102,12 @@ export default function PropertyDetailPage() {
         }
       />
 
-      <Tabs tabs={[...TABS]} active={tab} onChange={selectTab} />
+      <Tabs tabs={[...visibleTabs]} active={tab} onChange={selectTab} />
 
       {tab === "summary" && (
         <TabPanel id="summary">
+          <PropertyPhotos propertyId={property.id} propertyName={property.name} onChanged={refreshSummary} />
+
           {isPpr ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <StatTile label="Running costs this year" value={formatCurrency(summary.expenses)} tone="negative" />
@@ -204,6 +213,12 @@ export default function PropertyDetailPage() {
               />
             </>
           )}
+        </TabPanel>
+      )}
+
+      {tab === "manager" && !isPpr && (
+        <TabPanel id="manager">
+          <PropertyManagerTab key={property.id} property={property} onSaved={refreshSummary} />
         </TabPanel>
       )}
 

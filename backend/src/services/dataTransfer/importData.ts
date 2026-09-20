@@ -31,6 +31,10 @@ export async function loadImportContext(householdId: string, userId: string, can
       any: (ids) => prisma.propertyYearDetail.findMany({ where: { id: { in: ids } }, ...sel }),
       mine: (ids) => prisma.propertyYearDetail.findMany({ where: { id: { in: ids }, property: { householdId } }, ...sel }),
     },
+    property_photos: {
+      any: (ids) => prisma.propertyPhoto.findMany({ where: { id: { in: ids } }, ...sel }),
+      mine: (ids) => prisma.propertyPhoto.findMany({ where: { id: { in: ids }, property: { householdId } }, ...sel }),
+    },
     investments: { any: (ids) => prisma.investment.findMany({ where: { id: { in: ids } }, ...sel }), mine: (ids) => prisma.investment.findMany({ where: { id: { in: ids }, householdId }, ...sel }) },
     investment_transactions: {
       any: (ids) => prisma.investmentTransaction.findMany({ where: { id: { in: ids } }, ...sel }),
@@ -86,6 +90,7 @@ export async function applyImportPlan(plan: ImportPlan, ctx: ImportContext): Pro
   add("property_owners", c.propertyOwnerships, (data) => prisma.propertyOwnership.createMany({ data, skipDuplicates: true }));
   add("property_schedule_lines", c.scheduleLines, (data) => prisma.propertyScheduleLine.createMany({ data, skipDuplicates: true }));
   add("property_year_details", c.yearDetails, (data) => prisma.propertyYearDetail.createMany({ data, skipDuplicates: true }));
+  add("property_photos", c.photos, (data) => prisma.propertyPhoto.createMany({ data, skipDuplicates: true }));
   add("investments", c.investments, (data) => prisma.investment.createMany({ data, skipDuplicates: true }));
   add("investment_transactions", c.investmentTransactions, (data) => prisma.investmentTransaction.createMany({ data, skipDuplicates: true }));
   add("dividends", c.dividends, (data) => prisma.dividend.createMany({ data, skipDuplicates: true }));

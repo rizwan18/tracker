@@ -17,12 +17,16 @@ function sampleData(): ExportData {
       { id: "catCustom", householdId: "hA", name: "=Pest control", direction: "EXPENSE", isCustom: true, createdAt: base.createdAt },
     ],
     properties: [
-      { id: "propInv", householdId: "hA", name: "Maple Street", address: "12 Maple St, \"Unit 3\"", propertyType: "INVESTMENT", purchaseDate: D("2013-04-21"), purchasePrice: 400000, currentEstimatedValue: 480000, loanBalance: 210000, loanInterestRate: 6.1, rentalAgent: "Ray White", tenantName: null, rentAmount: 420, rentFrequency: "WEEKLY", rentalStartDate: D("2013-05-01"), availableForRentDate: D("2013-04-21"), scheduleInitialised: true, notes: "Line one\nLine two", ...base },
+      { id: "propInv", householdId: "hA", name: "Maple Street", address: "12 Maple St, \"Unit 3\"", propertyType: "INVESTMENT", purchaseDate: D("2013-04-21"), purchasePrice: 400000, currentEstimatedValue: 480000, loanBalance: 210000, loanInterestRate: 6.1, rentalAgent: "Ray White", tenantName: null, rentAmount: 420, rentFrequency: "WEEKLY", rentalStartDate: D("2013-05-01"), availableForRentDate: D("2013-04-21"), scheduleInitialised: true, notes: "Line one\nLine two", managerName: "Jo Agent", managerCompany: "Ray White", managerEmail: "jo@raywhite.example", managerPhone: "03 9999 0000", managerAddress: "1 High St, Hawthorn", managerNotes: "=call first", ...base },
       { id: "propHome", householdId: "hA", name: "Family Home", address: null, propertyType: "PPR", purchaseDate: null, purchasePrice: null, currentEstimatedValue: 610000, loanBalance: 95000, loanInterestRate: null, rentalAgent: null, tenantName: null, rentAmount: null, rentFrequency: null, rentalStartDate: null, availableForRentDate: null, scheduleInitialised: false, notes: null, ...base },
     ],
     owners: [{ propertyId: "propInv", email: "sam@example.com", percentage: 60 }, { propertyId: "propHome", email: "sam@example.com", percentage: 100 }, { propertyId: "propInv", email: "partner@example.com", percentage: 40 }],
     scheduleLines: [{ id: "sl1", propertyId: "propInv", categoryId: "catCouncil", label: "Council rates", isManual: false, sortOrder: 1, createdAt: base.createdAt }],
     yearDetails: [{ id: "yd1", propertyId: "propInv", financialYear: "2026-27", weeksRented: 52, updatedAt: base.updatedAt }],
+    photos: [
+      { id: "ph1", propertyId: "propInv", fileName: "front.jpg", contentType: "image/jpeg", filePath: "https://x.public.blob.vercel-storage.com/front.jpg", thumbPath: "https://x.public.blob.vercel-storage.com/thumb-front.jpg", isPrimary: true, createdAt: base.createdAt },
+      { id: "ph2", propertyId: "propInv", fileName: "back.jpg", contentType: "image/jpeg", filePath: "https://x.public.blob.vercel-storage.com/back.jpg", thumbPath: null, isPrimary: true, createdAt: base.createdAt },
+    ],
     investments: [{ id: "inv1", householdId: "hA", name: "Vanguard VAS", ticker: "VAS", type: "ETF", notes: null, currentValueOverride: null, ...base }],
     investmentTransactions: [{ id: "it1", investmentId: "inv1", type: "BUY", date: D("2024-02-01"), quantity: 100, pricePerUnit: 90.5, brokerage: 9.95, notes: null, ...base }],
     dividends: [{ id: "dv1", investmentId: "inv1", exDividendDate: D("2026-03-20"), paymentDate: D("2026-04-05"), grossAmount: 100, frankingCredit: 20, frankedAmount: 100, unfrankedAmount: 0, taxWithheld: 0, netAmount: 100, status: "RECEIVED", notes: null, financialYear: "2025-26", ...base }],
@@ -79,6 +83,27 @@ describe("export → import round trip", () => {
     expect(p.profile).toEqual({ fullName: "Sam Citizen", timezone: "Australia/Melbourne", easyViewEnabled: true, householdName: "Sam's household" });
   });
 
+  it("restores property manager details and picture links, with a single main picture", () => {
+    const { plan: p } = plan(csv);
+    const maple = p.creates.properties.find((x) => x.name === "Maple Street")!;
+    expect(maple).toMatchObject({ managerName: "Jo Agent", managerCompany: "Ray White", managerEmail: "jo@raywhite.example", managerPhone: "03 9999 0000", managerAddress: "1 High St, Hawthorn", managerNotes: "=call first" });
+    expect(p.summary.property_photos.toAdd).toBe(2);
+    expect(p.creates.photos.map((x) => [x.fileName, x.isPrimary, x.thumbPath])).toEqual([["front.jpg", true, "https://x.public.blob.vercel-storage.com/thumb-front.jpg"], ["back.jpg", false, null]]);
+    expect(p.creates.photos.every((x) => x.propertyId === "propInv" && x.contentType === "image/jpeg")).toBe(true);
+  });
+
+  it("won't import picture links that aren't https, and doesn't steal the main-picture role on an existing property", () => {
+    const ctx = ctxFor();
+    ctx.exists.properties.anywhere.add("propInv"); ctx.exists.properties.inHousehold.add("propInv");
+    const { plan: p } = plan(csv, ctx);
+    expect(p.creates.photos.every((x) => x.isPrimary === false)).toBe(true);
+    const bad = "Revenue Expense Tracker export,1\r\n\r\n[properties]\r\nid,name\r\np1,House\r\n\r\n[property_photos]\r\nid,property_id,file_name,content_type,file_path\r\nx1,p1,a.jpg,image/jpeg,javascript:alert(1)\r\nx2,p1,b.svg,image/svg+xml,https://example.com/b.svg\r\n";
+    const { plan: q } = plan(bad);
+    expect(q.creates.photos).toHaveLength(0);
+    expect(q.errors.join(" ")).toContain("https://");
+    expect(q.errors.join(" ")).toContain("content_type");
+  });
+
   it("keeps values exactly (text, numbers, dates, line breaks, quotes, formula-like text)", () => {
     const { plan: p } = plan(csv);
     const maple = p.creates.properties.find((x) => x.name === "Maple Street")!;
@@ -126,7 +151,7 @@ describe("export → import round trip", () => {
     const created = first.plan.creates;
     const put = (t: keyof ImportContext["exists"], rows: Array<{ id?: string }>) => rows.forEach((r) => r.id && (ctx.exists[t].anywhere.add(r.id), ctx.exists[t].inHousehold.add(r.id)));
     put("accounts", created.accounts); put("categories", created.categories); put("properties", created.properties);
-    put("property_schedule_lines", created.scheduleLines); put("property_year_details", created.yearDetails); put("investments", created.investments);
+    put("property_photos", created.photos); put("property_schedule_lines", created.scheduleLines); put("property_year_details", created.yearDetails); put("investments", created.investments);
     put("investment_transactions", created.investmentTransactions); put("dividends", created.dividends); put("capital_gain_disposals", created.disposals);
     put("transactions", created.transactions); put("bills", created.bills); put("reminders", created.reminders); put("documents", created.documents);
     ctx.categories = created.categories.map((c) => ({ id: c.id!, name: c.name, direction: c.direction }));

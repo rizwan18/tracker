@@ -59,8 +59,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (res.status === 204) return undefined as T;
 
-  const isCsv = res.headers.get("content-type")?.includes("text/csv");
-  if (isCsv) {
+  const contentType = res.headers.get("content-type") ?? "";
+  // Files (a CSV download, a property picture) come back as a Blob rather than JSON.
+  if (res.ok && (contentType.includes("text/csv") || contentType.startsWith("image/"))) {
     return (await res.blob()) as unknown as T;
   }
 

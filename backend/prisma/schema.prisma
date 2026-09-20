@@ -205,6 +205,13 @@ model Property {
   rentFrequency          String?  // WEEKLY | FORTNIGHTLY | MONTHLY
   rentalStartDate        DateTime?
   availableForRentDate   DateTime? // date the property was first genuinely available for rent
+  // Property manager / managing agent
+  managerName            String?
+  managerCompany         String?
+  managerEmail           String?
+  managerPhone           String?
+  managerAddress         String?   // office address
+  managerNotes           String?
   scheduleInitialised    Boolean  @default(false) // default rental-schedule lines have been added
   notes                  String?
   createdAt              DateTime @default(now())
@@ -216,6 +223,7 @@ model Property {
   documents     Document[]
   scheduleLines PropertyScheduleLine[]
   yearDetails   PropertyYearDetail[]
+  photos        PropertyPhoto[]
 
   @@index([householdId])
 }
@@ -248,6 +256,22 @@ model PropertyScheduleLine {
   createdAt  DateTime @default(now())
 
   @@unique([propertyId, categoryId])
+  @@index([propertyId])
+}
+
+/// A picture of a property. The image files live in Vercel Blob; the app only ever
+/// serves them back through an authenticated route, never the raw storage URL.
+model PropertyPhoto {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  fileName    String
+  contentType String   // image/jpeg | image/png | image/webp (checked from the file's own bytes)
+  filePath    String   // blob URL of the full-size image
+  thumbPath   String?  // blob URL of a small version, when the browser made one
+  isPrimary   Boolean  @default(false) // the picture shown as the property's icon
+  createdAt   DateTime @default(now())
+
   @@index([propertyId])
 }
 
