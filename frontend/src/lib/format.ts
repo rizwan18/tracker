@@ -49,3 +49,9 @@ export function defaultEntryDate(financialYearId: string): string {
   const { start, end } = financialYearBounds(financialYearId);
   return today >= start && today <= end ? today : end;
 }
+
+/** 51824753556 → "51 824 753 556" (anything that isn't 11 digits is returned unchanged). */
+export function formatAbn(abn: string | null | undefined): string {
+  const d = (abn ?? "").replace(/\s+/g, "");
+  return /^\d{11}$/.test(d) ? `${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}` : abn ?? "";
+}

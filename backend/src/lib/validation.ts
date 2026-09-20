@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isValidAbn, normaliseAbn } from "./abn";
+import { normaliseWebsite } from "./website";
 import { GST_MODES } from "../services/business/gst";
 import { ACCOUNT_GROUPS, ACCOUNT_TYPES_LEDGER, GROUPS_BY_TYPE } from "../services/business/chart";
 import { BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES, PORTFOLIO_TYPES } from "./constants";
@@ -255,6 +256,28 @@ export const propertyManagerSchema = z.object({
     .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: "That email address doesn't look right." })
     .transform((v) => (v ? v : null)),
   managerPhone: optionalText(40),
+  managerMobile: optionalText(40),
+  managerWebsite: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .nullable()
+    .refine((v) => !v || normaliseWebsite(v) !== null, { message: "That doesn't look like a website address, e.g. www.youragency.com.au." })
+    .transform((v) => (v ? normaliseWebsite(v) : null)),
+  managerAbn: z
+    .string()
+    .trim()
+    .max(20)
+    .optional()
+    .nullable()
+    .refine((v) => !v || isValidAbn(v), { message: "That ABN doesn't look right — an ABN has 11 digits." })
+    .transform((v) => (v ? normaliseAbn(v) : null)),
   managerAddress: optionalText(300),
   managerNotes: optionalText(2000),
+});
+
+/** Saving manager details, optionally copying the same details onto other properties. */
+export const propertyManagerSaveSchema = propertyManagerSchema.extend({
+  applyToPropertyIds: z.array(z.string().min(1)).max(50).optional(),
 });

@@ -45,7 +45,7 @@ export function renderExportCsv(data: ExportData, now: Date = new Date()): strin
       p.id, t(p.name), t(p.address), p.propertyType, d(p.purchaseDate), n(p.purchasePrice), n(p.currentEstimatedValue), n(p.loanBalance),
       n(p.loanInterestRate), t(p.rentalAgent), t(p.tenantName), n(p.rentAmount), id(p.rentFrequency), d(p.rentalStartDate),
       d(p.availableForRentDate), b(p.scheduleInitialised), t(p.notes), t(p.managerName), t(p.managerCompany), t(p.managerEmail), t(p.managerPhone),
-      t(p.managerAddress), t(p.managerNotes),
+      t(p.managerMobile), t(p.managerWebsite), t(p.managerAbn), t(p.managerAddress), t(p.managerNotes),
     ]),
     property_owners: data.owners.map((o) => [o.propertyId, nameOf(propertyName, o.propertyId), t(o.email), n(o.percentage)]),
     property_schedule_lines: data.scheduleLines.map((l) => [

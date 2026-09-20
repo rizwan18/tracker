@@ -38,7 +38,7 @@ export const SECTION_COLUMNS: Record<SectionName, readonly string[]> = {
     "id", "name", "address", "property_type", "purchase_date", "purchase_price", "current_estimated_value", "loan_balance",
     "loan_interest_rate", "rental_agent", "tenant_name", "rent_amount", "rent_frequency", "rental_start_date",
     "available_for_rent_date", "schedule_initialised", "notes", "manager_name", "manager_company", "manager_email", "manager_phone",
-    "manager_address", "manager_notes",
+    "manager_mobile", "manager_website", "manager_abn", "manager_address", "manager_notes",
   ],
   property_owners: ["property_id", "property", "owner_email", "ownership_percentage"],
   property_schedule_lines: ["id", "property_id", "property", "category_id", "category", "label", "is_manual", "sort_order"],

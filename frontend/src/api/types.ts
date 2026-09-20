@@ -115,6 +115,9 @@ export interface Property {
   managerCompany?: string | null;
   managerEmail?: string | null;
   managerPhone?: string | null;
+  managerMobile?: string | null;
+  managerWebsite?: string | null;
+  managerAbn?: string | null;
   managerAddress?: string | null;
   managerNotes?: string | null;
   /** The picture shown as the property's icon, if any. */

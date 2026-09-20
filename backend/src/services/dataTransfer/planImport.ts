@@ -2,6 +2,8 @@ import type { Prisma } from "@prisma/client";
 import { getFinancialYearId } from "../../lib/financialYear";
 import { ACCOUNT_TYPES, BILL_FREQUENCIES, BILL_STATUSES, DIVIDEND_STATUSES, INVESTMENT_TRANSACTION_TYPES, INVESTMENT_TYPES, PROPERTY_TYPES, REMINDER_STATUSES, RENT_FREQUENCIES, TRANSACTION_DIRECTIONS } from "../../lib/constants";
 import { deriveId, type ParsedFile } from "./parseExport";
+import { isValidAbn, normaliseAbn } from "../../lib/abn";
+import { normaliseWebsite } from "../../lib/website";
 import { RowReader, contentKeyOf } from "./rowReader";
 import { ID_TABLES, SECTION_ORDER, type IdTable, type SectionName } from "./sections";
 
@@ -143,6 +145,24 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
     index(names.categoriesAny, lower(c.name), c.id);
   }
   for (const a of ctx.accounts) index(names.accounts, lower(a.name), a.id);
+
+  // A bad website or ABN shouldn't cost a whole property row — drop just that value and say so.
+  function cleanWebsite(r: RowReader): string | null {
+    const v = r.str("manager_website", 200);
+    if (!v) return null;
+    const ok = normaliseWebsite(v);
+    if (!ok) warn(r, `the manager website “${v}” isn't a usable web address, so it was left out.`);
+    return ok;
+  }
+  function cleanAbn(r: RowReader): string | null {
+    const v = r.str("manager_abn", 20);
+    if (!v) return null;
+    if (!isValidAbn(v)) {
+      warn(r, `the manager ABN “${v}” isn't a valid ABN, so it was left out.`);
+      return null;
+    }
+    return normaliseAbn(v);
+  }
 
   function decideId(table: IdTable, r: RowReader): { raw: string; id: string; exists: boolean } {
     const raw = r.raw("id").trim();
@@ -329,6 +349,9 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
           managerCompany: r.str("manager_company", 120),
           managerEmail: r.str("manager_email", 200),
           managerPhone: r.str("manager_phone", 40),
+          managerMobile: r.str("manager_mobile", 40),
+          managerWebsite: cleanWebsite(r),
+          managerAbn: cleanAbn(r),
           managerAddress: r.str("manager_address", 300),
           managerNotes: r.str("manager_notes", 2000),
         };

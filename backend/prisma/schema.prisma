@@ -209,7 +209,10 @@ model Property {
   managerName            String?
   managerCompany         String?
   managerEmail           String?
-  managerPhone           String?
+  managerPhone           String?   // office phone
+  managerMobile          String?
+  managerWebsite         String?
+  managerAbn             String?   // 11 digits, no spaces
   managerAddress         String?   // office address
   managerNotes           String?
   scheduleInitialised    Boolean  @default(false) // default rental-schedule lines have been added

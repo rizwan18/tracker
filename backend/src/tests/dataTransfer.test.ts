@@ -17,7 +17,7 @@ function sampleData(): ExportData {
       { id: "catCustom", householdId: "hA", name: "=Pest control", direction: "EXPENSE", isCustom: true, createdAt: base.createdAt },
     ],
     properties: [
-      { id: "propInv", householdId: "hA", name: "Maple Street", address: "12 Maple St, \"Unit 3\"", propertyType: "INVESTMENT", purchaseDate: D("2013-04-21"), purchasePrice: 400000, currentEstimatedValue: 480000, loanBalance: 210000, loanInterestRate: 6.1, rentalAgent: "Ray White", tenantName: null, rentAmount: 420, rentFrequency: "WEEKLY", rentalStartDate: D("2013-05-01"), availableForRentDate: D("2013-04-21"), scheduleInitialised: true, notes: "Line one\nLine two", managerName: "Jo Agent", managerCompany: "Ray White", managerEmail: "jo@raywhite.example", managerPhone: "03 9999 0000", managerAddress: "1 High St, Hawthorn", managerNotes: "=call first", ...base },
+      { id: "propInv", householdId: "hA", name: "Maple Street", address: "12 Maple St, \"Unit 3\"", propertyType: "INVESTMENT", purchaseDate: D("2013-04-21"), purchasePrice: 400000, currentEstimatedValue: 480000, loanBalance: 210000, loanInterestRate: 6.1, rentalAgent: "Ray White", tenantName: null, rentAmount: 420, rentFrequency: "WEEKLY", rentalStartDate: D("2013-05-01"), availableForRentDate: D("2013-04-21"), scheduleInitialised: true, notes: "Line one\nLine two", managerName: "Jo Agent", managerCompany: "Ray White", managerEmail: "jo@raywhite.example", managerPhone: "03 9999 0000", managerMobile: "0412 345 678", managerWebsite: "https://raywhite.com.au", managerAbn: "51824753556", managerAddress: "1 High St, Hawthorn", managerNotes: "=call first", ...base },
       { id: "propHome", householdId: "hA", name: "Family Home", address: null, propertyType: "PPR", purchaseDate: null, purchasePrice: null, currentEstimatedValue: 610000, loanBalance: 95000, loanInterestRate: null, rentalAgent: null, tenantName: null, rentAmount: null, rentFrequency: null, rentalStartDate: null, availableForRentDate: null, scheduleInitialised: false, notes: null, ...base },
     ],
     owners: [{ propertyId: "propInv", email: "sam@example.com", percentage: 60 }, { propertyId: "propHome", email: "sam@example.com", percentage: 100 }, { propertyId: "propInv", email: "partner@example.com", percentage: 40 }],
@@ -86,10 +86,20 @@ describe("export → import round trip", () => {
   it("restores property manager details and picture links, with a single main picture", () => {
     const { plan: p } = plan(csv);
     const maple = p.creates.properties.find((x) => x.name === "Maple Street")!;
-    expect(maple).toMatchObject({ managerName: "Jo Agent", managerCompany: "Ray White", managerEmail: "jo@raywhite.example", managerPhone: "03 9999 0000", managerAddress: "1 High St, Hawthorn", managerNotes: "=call first" });
+    expect(maple).toMatchObject({ managerName: "Jo Agent", managerCompany: "Ray White", managerEmail: "jo@raywhite.example", managerPhone: "03 9999 0000", managerMobile: "0412 345 678", managerWebsite: "https://raywhite.com.au", managerAbn: "51824753556", managerAddress: "1 High St, Hawthorn", managerNotes: "=call first" });
     expect(p.summary.property_photos.toAdd).toBe(2);
     expect(p.creates.photos.map((x) => [x.fileName, x.isPrimary, x.thumbPath])).toEqual([["front.jpg", true, "https://x.public.blob.vercel-storage.com/thumb-front.jpg"], ["back.jpg", false, null]]);
     expect(p.creates.photos.every((x) => x.propertyId === "propInv" && x.contentType === "image/jpeg")).toBe(true);
+  });
+
+  it("keeps the rest of a property when its manager website or ABN is unusable, and says so", () => {
+    const bad = "Revenue Expense Tracker export,1\r\n\r\n[properties]\r\nid,name,manager_name,manager_website,manager_abn,manager_mobile\r\np1,House,Jo,javascript:alert(1),123,0400 000 000\r\np2,Unit,Al,agency.com.au,51 824 753 556,\r\n";
+    const { plan: q } = plan(bad);
+    expect(q.errors).toEqual([]);
+    const [house, unit] = q.creates.properties;
+    expect(house).toMatchObject({ name: "House", managerName: "Jo", managerWebsite: null, managerAbn: null, managerMobile: "0400 000 000" });
+    expect(unit).toMatchObject({ managerWebsite: "https://agency.com.au", managerAbn: "51824753556" });
+    expect(q.warnings.filter((w) => w.includes("left out"))).toHaveLength(2);
   });
 
   it("won't import picture links that aren't https, and doesn't steal the main-picture role on an existing property", () => {

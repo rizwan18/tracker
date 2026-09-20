@@ -4,7 +4,7 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import multer from "multer";
 import { put, del } from "@vercel/blob";
-import { propertySchema, propertyManagerSchema, scheduleLineSchema, scheduleDetailsSchema, financialYearIdSchema } from "../lib/validation";
+import { propertySchema, propertyManagerSaveSchema, scheduleLineSchema, scheduleDetailsSchema, financialYearIdSchema } from "../lib/validation";
 import { MAX_PHOTOS_PER_PROPERTY, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, detectImageType, safeFileName } from "../lib/images";
 import { getCurrentFinancialYear } from "../lib/financialYear";
 import { DEFAULT_RENTAL_SCHEDULE_LINES } from "../lib/constants";
@@ -361,16 +361,35 @@ router.delete(
 router.put(
   "/:id/manager",
   asyncHandler(async (req: AuthedRequest, res) => {
-    const { property } = await findOwnedProperty(req);
-    const data = propertyManagerSchema.parse(req.body);
-    const updated = await prisma.property.update({ where: { id: property.id }, data });
+    const { householdId, property } = await findOwnedProperty(req);
+    const { applyToPropertyIds, ...details } = propertyManagerSaveSchema.parse(req.body);
+
+    // Optionally copy the same details onto other properties (each keeps its own copy afterwards).
+    const targetIds = [...new Set((applyToPropertyIds ?? []).filter((id) => id !== property.id))];
+    let targets: Array<{ id: string; name: string }> = [];
+    if (targetIds.length > 0) {
+      const found = await prisma.property.findMany({ where: { householdId, id: { in: targetIds } }, select: { id: true, name: true, propertyType: true } });
+      if (found.length !== targetIds.length) throw new FriendlyError("One of the properties you chose couldn't be found.", 404);
+      const home = found.find((p) => p.propertyType === "PPR");
+      if (home) throw new FriendlyError(`“${home.name}” is your own home, which doesn't have a property manager.`, 400);
+      targets = found.map((p) => ({ id: p.id, name: p.name }));
+    }
+
+    const [updated] = await prisma.$transaction([
+      prisma.property.update({ where: { id: property.id }, data: details }),
+      ...(targets.length > 0 ? [prisma.property.updateMany({ where: { householdId, id: { in: targets.map((t) => t.id) } }, data: details })] : []),
+    ]);
     res.json({
       managerName: updated.managerName,
       managerCompany: updated.managerCompany,
       managerEmail: updated.managerEmail,
       managerPhone: updated.managerPhone,
+      managerMobile: updated.managerMobile,
+      managerWebsite: updated.managerWebsite,
+      managerAbn: updated.managerAbn,
       managerAddress: updated.managerAddress,
       managerNotes: updated.managerNotes,
+      appliedTo: targets,
     });
   })
 );
