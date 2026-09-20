@@ -12,6 +12,7 @@ const PRIMARY_NAV = [
   { to: "/bills", label: "Bills", icon: "🧾" },
   { to: "/reminders", label: "Reminders", icon: "🔔" },
   { to: "/reports", label: "Reports", icon: "📊" },
+  { to: "/data", label: "Your data", icon: "💾" },
   { to: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
@@ -25,6 +26,7 @@ const COMPANY_NAV = [
   { to: "/business/journal", label: "Journal", icon: "✍️" },
   { to: "/properties", label: "Properties", icon: "🏘" },
   { to: "/investments", label: "Investments", icon: "📈" },
+  { to: "/data", label: "Your data", icon: "💾" },
   { to: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

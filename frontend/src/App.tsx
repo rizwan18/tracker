@@ -11,6 +11,7 @@ import RegisterPage from "./pages/RegisterPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import SelectPortfolioPage from "./pages/SelectPortfolioPage";
 import HomePage from "./pages/HomePage";
+import DataPage from "./pages/DataPage";
 import { RequireCompany } from "./components/RequireCompany";
 import BusinessEntriesPage from "./pages/business/BusinessEntriesPage";
 import BusinessAccountsPage from "./pages/business/BusinessAccountsPage";
@@ -74,6 +75,7 @@ export default function App() {
               <Route path="/bills" element={<BillsPage />} />
               <Route path="/reminders" element={<RemindersPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/data" element={<DataPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Routes>

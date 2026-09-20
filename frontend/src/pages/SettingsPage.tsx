@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import type { Portfolio } from "../api/types";
 import { useAuth } from "../context/AuthContext";
@@ -107,6 +108,20 @@ export default function SettingsPage() {
           Your financial information is only visible to you and members of your household. This app is a record-keeping and planning tool — it does not give tax or
           financial advice. Always review your records with a registered tax professional or financial adviser.
         </p>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display font-semibold">Your data</h3>
+            <p className="text-sm text-[var(--color-ink-soft)] mt-1">Download everything as a CSV backup, or import a file you saved earlier.</p>
+          </div>
+          <Link to="/data">
+            <Button size="sm" variant="secondary">
+              Open
+            </Button>
+          </Link>
+        </div>
       </Card>
 
       <button onClick={logout} className="text-sm text-[var(--color-brick)] font-medium">
