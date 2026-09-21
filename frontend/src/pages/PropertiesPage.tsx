@@ -7,7 +7,6 @@ import { Modal } from "../components/Modal";
 import { PropertyForm } from "../components/PropertyForm";
 import { PropertyTypeBadge, PropertyTypeLegend } from "../components/PropertyTypeBadge";
 import { PropertyIcon } from "../components/PropertyIcon";
-import { PortfolioDataPanel } from "../components/PortfolioDataPanel";
 import { PROPERTY_TYPE_INFO, propertyTypeOf } from "../lib/propertyType";
 import { formatCurrency } from "../lib/format";
 
@@ -28,7 +27,15 @@ export default function PropertiesPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeading title="Properties" subtitle="Track your investment properties and your home (principal place of residence)." action={<Button onClick={() => setShowForm(true)}>+ Add property</Button>} />
+      <SectionHeading title="Properties" subtitle="Track your investment properties and your home (principal place of residence)." action={
+          <div className="flex flex-wrap gap-2">
+            <Link to="/import-export?section=properties">
+              <Button variant="secondary">Import / Export</Button>
+            </Link>
+            <Button onClick={() => setShowForm(true)}>+ Add property</Button>
+          </div>
+        }
+      />
 
       {loading ? (
         <p className="text-[var(--color-ink-soft)]">Loading…</p>
@@ -85,8 +92,6 @@ export default function PropertiesPage() {
           </div>
         </>
       )}
-
-      <PortfolioDataPanel scope="properties" onImported={load} />
 
       {showForm && (
         <Modal title="Add a property" onClose={() => setShowForm(false)}>

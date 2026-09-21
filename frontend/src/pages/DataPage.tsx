@@ -27,6 +27,13 @@ export default function DataPage() {
         </p>
       )}
       <DataBackupCard />
+      <p className="text-sm text-[var(--color-ink-soft)]">
+        Just want your properties or investments? Use{" "}
+        <Link to="/import-export" className="text-[var(--color-sky)] hover:underline">
+          Import / Export
+        </Link>
+        .
+      </p>
     </div>
   );
 }

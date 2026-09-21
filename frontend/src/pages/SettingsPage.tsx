@@ -113,6 +113,20 @@ export default function SettingsPage() {
       <Card>
         <div className="flex items-center justify-between gap-3">
           <div>
+            <h3 className="font-display font-semibold">Import / Export</h3>
+            <p className="text-sm text-[var(--color-ink-soft)] mt-1">Export or import your property and investment portfolios as CSV files.</p>
+          </div>
+          <Link to="/import-export">
+            <Button size="sm" variant="secondary">
+              Open
+            </Button>
+          </Link>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <div>
             <h3 className="font-display font-semibold">Your data</h3>
             <p className="text-sm text-[var(--color-ink-soft)] mt-1">Download everything as a CSV backup, or import a file you saved earlier.</p>
           </div>

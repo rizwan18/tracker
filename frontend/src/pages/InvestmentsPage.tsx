@@ -7,7 +7,6 @@ import { Modal } from "../components/Modal";
 import { InvestmentForm } from "../components/InvestmentForm";
 import { HoldingsTable } from "../components/HoldingsTable";
 import { StakeImportModalBody } from "../components/StakeImportModal";
-import { PortfolioDataPanel } from "../components/PortfolioDataPanel";
 import { isStock, marketOf } from "../lib/holdings";
 import { formatCurrency, formatCurrencySigned } from "../lib/format";
 
@@ -58,6 +57,9 @@ export default function InvestmentsPage() {
         subtitle="Track holdings, dividends, and gains — all figures are estimates based on what you enter."
         action={
           <div className="flex flex-wrap gap-2">
+            <Link to="/import-export?section=investments">
+              <Button variant="secondary">Import / Export</Button>
+            </Link>
             <Button variant="secondary" onClick={() => setShowImport(true)}>
               Import from Stake
             </Button>
@@ -132,8 +134,6 @@ export default function InvestmentsPage() {
           )}
         </div>
       )}
-
-      <PortfolioDataPanel scope="investments" onImported={load} />
 
       {showImport && (
         <Modal title="Import from Stake" onClose={() => setShowImport(false)}>
