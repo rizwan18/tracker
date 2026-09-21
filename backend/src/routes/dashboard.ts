@@ -56,6 +56,9 @@ router.get(
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, address: true, propertyType: true, currentEstimatedValue: true, loanBalance: true },
     });
+    // Each property's main picture, shown as its icon on the dashboard.
+    const primaries = await prisma.propertyPhoto.findMany({ where: { propertyId: { in: propertyList.map((p) => p.id) }, isPrimary: true }, select: { id: true, propertyId: true } });
+    const primaryByProperty = new Map(primaries.map((p) => [p.propertyId, p.id]));
 
     const recentTransactions = await prisma.transaction.findMany({
       where: { householdId },
@@ -112,7 +115,7 @@ router.get(
         pprCount: propertyTotals.ppr.count,
         ppr: propertyTotals.ppr,
       },
-      properties: propertyList,
+      properties: propertyList.map((p) => ({ ...p, primaryPhotoId: primaryByProperty.get(p.id) ?? null })),
       upcomingPayments: upcoming.map((b: { id: string; name: string; amount: number; nextDueDate: Date; property: { name: string } | null }) => ({
         id: b.id,
         name: b.name,

@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import type { DashboardResponse } from "../../api/types";
 import { formatCurrency } from "../../lib/format";
-import { PROPERTY_TYPE_INFO, propertyTypeOf, type PropertyType } from "../../lib/propertyType";
-import { PropertyTypeBadge, PropertyTypeLegend } from "../PropertyTypeBadge";
+import { propertyTypeOf, type PropertyType } from "../../lib/propertyType";
+import { PropertyIcon } from "../PropertyIcon";
+import { PropertyTypeLegend } from "../PropertyTypeBadge";
 
 type PropertyRow = DashboardResponse["properties"][number];
 
@@ -26,8 +27,8 @@ export function propertyChartRows(properties: PropertyRow[]) {
 }
 
 /**
- * Property snapshot as a graph: one bar per property, as long as the property is valuable.
- * The solid part is what you own (equity), the hatched part is what you owe (loan).
+ * Your property at a glance: one headline bar for everything, then one picture-and-bar per
+ * property (its main photo if it has one). Solid = what you own, striped = what you owe.
  */
 export function PropertyChart({ properties }: { properties: PropertyRow[] }) {
   const rows = propertyChartRows(properties);
@@ -35,26 +36,30 @@ export function PropertyChart({ properties }: { properties: PropertyRow[] }) {
   const totalLoan = rows.reduce((s, r) => s + r.loan, 0);
   const totalEquity = totalValue - totalLoan;
   const max = Math.max(1, ...rows.map((r) => r.value));
+  const ownedShare = totalValue > 0 ? (totalEquity / totalValue) * 100 : 0;
 
   return (
     <div>
-      <dl className="grid grid-cols-3 gap-3 mb-5">
-        <div>
-          <dt className="text-xs text-[var(--color-ink-soft)]">Total value</dt>
-          <dd className="font-display text-xl font-semibold">{formatCurrency(totalValue)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-[var(--color-ink-soft)]">You owe</dt>
-          <dd className="font-display text-xl font-semibold text-[var(--color-brick)]">{formatCurrency(totalLoan)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-[var(--color-ink-soft)]">You own</dt>
-          <dd className="font-display text-xl font-semibold text-[var(--color-eucalyptus)]">{formatCurrency(totalEquity)}</dd>
-        </div>
+      {/* Screen readers get the three plain numbers; sighted people get the headline bar. */}
+      <dl className="sr-only">
+        <dt>Total value</dt>
+        <dd>{formatCurrency(totalValue)}</dd>
+        <dt>You owe</dt>
+        <dd>{formatCurrency(totalLoan)}</dd>
+        <dt>You own</dt>
+        <dd>{formatCurrency(totalEquity)}</dd>
       </dl>
 
+      <p className="text-[var(--color-ink-soft)]" aria-hidden>
+        You own <span className="font-display text-2xl font-semibold text-[var(--color-eucalyptus)]">{formatCurrency(totalEquity)}</span> of {formatCurrency(totalValue)}
+      </p>
+      <div className="mt-2 h-3 rounded-full overflow-hidden flex bg-[var(--color-paper-dim)]" aria-hidden>
+        <div style={{ width: `${ownedShare}%`, background: "var(--color-eucalyptus)" }} />
+        <div style={{ width: `${100 - ownedShare}%`, background: hatched("var(--color-brick)"), boxShadow: "inset 0 0 0 1px var(--color-brick)" }} />
+      </div>
+
       <ul
-        className="space-y-4"
+        className="mt-5 space-y-3"
         aria-label={`Property values. ${rows.map((r) => `${r.name}: worth ${formatCurrency(r.value)}, you own ${formatCurrency(r.equity)}, you owe ${formatCurrency(r.loan)}`).join("; ")}`}
       >
         {rows.map((r) => {
@@ -62,49 +67,40 @@ export function PropertyChart({ properties }: { properties: PropertyRow[] }) {
           const widthPct = r.value > 0 ? Math.max(6, (r.value / max) * 100) : 0;
           return (
             <li key={r.id}>
-              <Link to={`/properties/${r.id}`} className="block group rounded-lg -mx-2 px-2 py-1 hover:bg-[var(--color-paper-dim)] focus-visible:outline-2 focus-visible:outline-[var(--color-sky)]">
-                <div className="flex items-center justify-between gap-3 mb-1.5">
-                  <span className="flex items-center gap-2 min-w-0">
+              <Link to={`/properties/${r.id}`} className="flex items-center gap-3 rounded-xl -mx-2 px-2 py-1.5 hover:bg-[var(--color-paper-dim)] focus-visible:outline-2 focus-visible:outline-[var(--color-sky)]">
+                <PropertyIcon property={r} size={44} />
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-baseline justify-between gap-3">
                     <span className="font-medium text-sm truncate">{r.name}</span>
-                    <PropertyTypeBadge type={r.type} />
+                    <span className="text-sm shrink-0">{r.value > 0 ? formatCurrency(r.value) : <span className="text-[var(--color-ink-soft)]">No value yet</span>}</span>
                   </span>
-                  <span className="text-sm font-medium shrink-0">{r.value > 0 ? formatCurrency(r.value) : "No value yet"}</span>
-                </div>
-                {r.value > 0 ? (
-                  <>
-                    <div className="h-4 rounded-full bg-[var(--color-paper-dim)] overflow-hidden">
-                      <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${widthPct}%` }} aria-hidden>
-                        <div style={{ width: `${(r.equity / r.value) * 100}%`, background: colour }} />
-                        <div style={{ width: `${(r.loan / r.value) * 100}%`, background: hatched(colour), boxShadow: `inset 0 0 0 1px ${colour}` }} />
-                      </div>
-                    </div>
-                    <p className="text-xs text-[var(--color-ink-soft)] mt-1">
-                      You own {formatCurrency(r.equity)}
-                      {r.loan > 0 ? ` · owe ${formatCurrency(r.loan)} (${r.owedShare}% of its value)` : " · no loan"}
-                      {r.loanExceedsValue ? " · loan is more than the value" : ""}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-xs text-[var(--color-ink-soft)]">Add an estimated value on the property page to see it here.</p>
-                )}
+                  {r.value > 0 ? (
+                    <>
+                      <span className="block mt-1.5 h-2.5 rounded-full bg-[var(--color-paper-dim)] overflow-hidden" aria-hidden>
+                        <span className="flex h-full rounded-full overflow-hidden" style={{ width: `${widthPct}%` }}>
+                          <span style={{ width: `${(r.equity / r.value) * 100}%`, background: colour }} />
+                          <span style={{ width: `${(r.loan / r.value) * 100}%`, background: hatched(colour), boxShadow: `inset 0 0 0 1px ${colour}` }} />
+                        </span>
+                      </span>
+                      <span className="block text-xs text-[var(--color-ink-soft)] mt-1">
+                        {r.loan > 0 ? `owe ${formatCurrency(r.loan)} (${r.owedShare}%)` : "no loan"}
+                        {r.loanExceedsValue ? " · loan is more than the value" : ""}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="block text-xs text-[var(--color-ink-soft)]">Add a value on the property page to see it here.</span>
+                  )}
+                </span>
               </Link>
             </li>
           );
         })}
       </ul>
 
-      <div className="mt-5 pt-3 border-t border-[var(--color-line)] flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs text-[var(--color-ink-soft)]">
-        <span className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5">
-            <span className="w-4 h-2.5 rounded-sm" style={{ background: "var(--color-ink-soft)" }} aria-hidden /> Solid = what you own
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-4 h-2.5 rounded-sm" style={{ background: hatched("var(--color-ink-soft)"), boxShadow: "inset 0 0 0 1px var(--color-ink-soft)" }} aria-hidden /> Striped = what you owe
-          </span>
-        </span>
+      <div className="mt-4 pt-3 border-t border-[var(--color-line)] flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--color-ink-soft)]">
+        <span>Solid = you own · striped = you owe</span>
         <PropertyTypeLegend />
       </div>
-      <p className="sr-only">{PROPERTY_TYPE_INFO.INVESTMENT.label} bars are green and {PROPERTY_TYPE_INFO.PPR.label} bars are blue.</p>
     </div>
   );
 }

@@ -55,3 +55,13 @@ export function formatAbn(abn: string | null | undefined): string {
   const d = (abn ?? "").replace(/\s+/g, "");
   return /^\d{11}$/.test(d) ? `${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}` : abn ?? "";
 }
+
+/**
+ * A calendar date such as "1 Jul 2026", read in UTC. Dates like the start and end of a financial year
+ * are stored as UTC instants; reading them in a browser timezone east of UTC would push the end of
+ * the year (30 June, 23:59 UTC) onto 1 July.
+ */
+export function formatDateUtc(dateInput: string | Date): string {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(date);
+}

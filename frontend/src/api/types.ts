@@ -52,6 +52,7 @@ export interface DashboardResponse {
     propertyType: "INVESTMENT" | "PPR";
     currentEstimatedValue: number | null;
     loanBalance: number | null;
+    primaryPhotoId?: string | null;
   }>;
   upcomingPayments: Array<{ id: string; name: string; amount: number; dueDate: string; property: string | null }>;
   alerts: Array<{ id: string; message: string; severity: "info" | "warning" }>;
