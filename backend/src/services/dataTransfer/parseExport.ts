@@ -13,6 +13,8 @@ export interface ParsedRow {
 
 export interface ParsedFile {
   sections: Map<SectionName, ParsedRow[]>;
+  /** The header names (lower-cased) each section was written with. */
+  headers: Map<SectionName, string[]>;
   unknownSections: string[];
   totalRows: number;
 }
@@ -33,6 +35,7 @@ export function parseExportFile(text: string): ParsedFile {
 
   const known = new Set<string>(SECTION_ORDER);
   const sections = new Map<SectionName, ParsedRow[]>();
+  const headers = new Map<SectionName, string[]>();
   const unknownSections: string[] = [];
   let current: SectionName | null = null;
   let skipping = false;
@@ -62,6 +65,7 @@ export function parseExportFile(text: string): ParsedFile {
 
     if (!header) {
       header = cells.map((c) => c.trim().toLowerCase());
+      headers.set(current, header);
       return;
     }
     const record: Record<string, string> = {};
@@ -74,7 +78,7 @@ export function parseExportFile(text: string): ParsedFile {
 
   if (totalRows === 0) throw new FriendlyError("This file doesn't contain any data rows to import.", 400);
   if (totalRows > MAX_IMPORT_ROWS) throw new FriendlyError(`This file has ${totalRows.toLocaleString("en-AU")} rows, which is more than can be imported in one go (${MAX_IMPORT_ROWS.toLocaleString("en-AU")}).`, 400);
-  return { sections, unknownSections, totalRows };
+  return { sections, headers, unknownSections, totalRows };
 }
 
 /**

@@ -65,6 +65,18 @@ export const investmentSchema = z.object({
   type: z.enum(INVESTMENT_TYPES),
   notes: z.string().optional().nullable(),
   currentValueOverride: z.coerce.number().optional().nullable(),
+  /** Where a share or ETF is traded. Older records leave this empty and count as ASX. */
+  market: z.enum(["ASX", "WALL_ST"]).optional().nullable(),
+  currency: z.enum(["AUD", "USD"]).default("AUD"),
+});
+
+/** A dated snapshot of a holding (units × price, in the investment's currency). */
+export const investmentValuationSchema = z.object({
+  asAt: z.coerce.date(),
+  units: z.coerce.number().min(0, "Units can't be negative.").max(1e12),
+  marketPrice: z.coerce.number().min(0, "The price can't be negative.").max(1e9),
+  /** Australian dollars per US dollar — needed for US holdings so the value can be shown in A$. */
+  fxRate: z.coerce.number().positive("The exchange rate must be more than zero.").max(100).optional().nullable(),
 });
 
 export const investmentTransactionSchema = z.object({

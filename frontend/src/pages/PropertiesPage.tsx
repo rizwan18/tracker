@@ -7,6 +7,7 @@ import { Modal } from "../components/Modal";
 import { PropertyForm } from "../components/PropertyForm";
 import { PropertyTypeBadge, PropertyTypeLegend } from "../components/PropertyTypeBadge";
 import { PropertyIcon } from "../components/PropertyIcon";
+import { PortfolioDataPanel } from "../components/PortfolioDataPanel";
 import { PROPERTY_TYPE_INFO, propertyTypeOf } from "../lib/propertyType";
 import { formatCurrency } from "../lib/format";
 
@@ -84,6 +85,8 @@ export default function PropertiesPage() {
           </div>
         </>
       )}
+
+      <PortfolioDataPanel scope="properties" onImported={load} />
 
       {showForm && (
         <Modal title="Add a property" onClose={() => setShowForm(false)}>

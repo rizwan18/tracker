@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { getFinancialYearId } from "../lib/financialYear";
 import { groupPropertyTotals, type PropertyGroupTotals } from "../lib/propertyTypes";
+import { currentValueOf } from "./holdings";
 
 /**
  * All calculations are scoped to a householdId and a financial year id
@@ -163,7 +164,7 @@ export async function portfolioValue(householdId: string): Promise<{ properties:
 
   const investments = await prisma.investment.findMany({
     where: { householdId },
-    include: { investmentTransactions: true },
+    include: { investmentTransactions: true, valuations: { orderBy: { asAt: "desc" }, take: 1 } },
   });
 
   let sharesValue = 0;
@@ -174,7 +175,8 @@ export async function portfolioValue(householdId: string): Promise<{ properties:
       qty += tx.type === "BUY" ? tx.quantity : -tx.quantity;
     }
     const lastPrice = [...inv.investmentTransactions].sort((a, b) => b.date.getTime() - a.date.getTime())[0]?.pricePerUnit ?? 0;
-    const estimatedValue = inv.currentValueOverride ?? qty * lastPrice;
+    // The newest statement valuation (in A$) wins, then a manual override, then units × last price.
+    const estimatedValue = currentValueOf({ valuation: inv.valuations[0] ?? null, override: inv.currentValueOverride, quantity: qty, lastPrice });
     if (inv.type === "SHARE" || inv.type === "ETF" || inv.type === "LIC") {
       sharesValue += estimatedValue;
     } else {

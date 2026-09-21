@@ -5,7 +5,7 @@ import { deriveId, type ParsedFile } from "./parseExport";
 import { isValidAbn, normaliseAbn } from "../../lib/abn";
 import { normaliseWebsite } from "../../lib/website";
 import { RowReader, contentKeyOf } from "./rowReader";
-import { ID_TABLES, SECTION_ORDER, type IdTable, type SectionName } from "./sections";
+import { ID_TABLES, SECTION_LABELS, SECTION_ORDER, missingRequiredColumns, type IdTable, type SectionName } from "./sections";
 
 export interface ImportContext {
   householdId: string;
@@ -18,6 +18,11 @@ export interface ImportContext {
   accounts: Array<{ id: string; name: string; type: string }>;
   /** The signed-in person's current principal place of residence, if any. */
   ppr: { id: string; name: string } | null;
+  /**
+   * Properties and investments already in the household. Used only to warn when a record about to be
+   * added looks like one that exists under a different id — nothing is merged or changed.
+   */
+  similar?: { properties: Array<{ id: string; name: string }>; investments: Array<{ id: string; name: string; ticker: string | null }> };
   /** For every candidate id: does it exist at all, and does it exist in this household? */
   exists: Record<IdTable, { anywhere: Set<string>; inHousehold: Set<string> }>;
 }
@@ -50,6 +55,7 @@ export interface ImportPlan {
     yearDetails: Prisma.PropertyYearDetailCreateManyInput[];
     photos: Prisma.PropertyPhotoCreateManyInput[];
     investments: Prisma.InvestmentCreateManyInput[];
+    valuations: Prisma.InvestmentValuationCreateManyInput[];
     investmentTransactions: Prisma.InvestmentTransactionCreateManyInput[];
     dividends: Prisma.DividendCreateManyInput[];
     disposals: Prisma.CapitalGainDisposalCreateManyInput[];
@@ -113,22 +119,35 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
   const warnings: string[] = [];
   const summary = emptySummary();
   const creates: ImportPlan["creates"] = {
-    accounts: [], categories: [], properties: [], propertyOwnerships: [], scheduleLines: [], yearDetails: [], photos: [], investments: [],
+    accounts: [], categories: [], properties: [], propertyOwnerships: [], scheduleLines: [], yearDetails: [], photos: [], investments: [], valuations: [],
     investmentTransactions: [], dividends: [], disposals: [], transactions: [], bills: [], reminders: [], documents: [],
   };
   const householdId = ctx.householdId;
   const userId = ctx.userId;
 
-  const rowsOf = (section: SectionName) => parsed.sections.get(section) ?? [];
+  // A section whose header row lacks a column every row needs can't be read. Say so once, clearly,
+  // instead of failing every row one by one.
+  const blocked = new Map<SectionName, { rows: number; missing: string[] }>();
+  for (const [name, sectionRows] of parsed.sections) {
+    if (sectionRows.length === 0) continue;
+    const missing = missingRequiredColumns(name, parsed.headers.get(name) ?? []);
+    if (missing.length > 0) {
+      blocked.set(name, { rows: sectionRows.length, missing });
+      errors.push(`${SECTION_LABELS[name]}: the [${name}] section has no ${missing.map((m) => `“${m}”`).join(", ")} column, so its ${sectionRows.length} ${sectionRows.length === 1 ? "row" : "rows"} can't be imported. Check that section's header row.`);
+    }
+  }
+  const rowsOf = (section: SectionName) => (blocked.has(section) ? [] : parsed.sections.get(section) ?? []);
   const reader = (section: SectionName, row: ReturnType<typeof rowsOf>[number]) => new RowReader(section, row, errors);
   const warn = (r: RowReader, message: string) => warnings.push(`${r.section.replace(/_/g, " ")}, row ${r.rowNo}: ${message}`);
 
   // file id -> the id the record has (or will have) in this household
   const idMap = {} as Record<IdTable, Map<string, string>>;
   const seen = {} as Record<IdTable, Set<string>>;
+  const usedDerived = {} as Record<IdTable, Set<string>>;
   for (const t of ID_TABLES) {
     idMap[t] = new Map();
     seen[t] = new Set();
+    usedDerived[t] = new Set();
   }
 
   // name lookups (null = ambiguous, never guessed)
@@ -164,6 +183,16 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
     return normaliseAbn(v);
   }
 
+  const lc = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
+  function warnIfSimilar(r: RowReader, kind: "property" | "investment", rec: { id?: string; name: string; ticker?: string | null }) {
+    if (!ctx.similar) return;
+    const clash =
+      kind === "property"
+        ? ctx.similar.properties.find((p) => p.id !== rec.id && lc(p.name) === lc(rec.name))
+        : ctx.similar.investments.find((i) => i.id !== rec.id && (lc(i.name) === lc(rec.name) || (!!lc(i.ticker) && lc(i.ticker) === lc(rec.ticker))));
+    if (clash) warn(r, `“${rec.name}” looks like ${kind === "property" ? "a property" : "an investment"} you already have (“${clash.name}”). It will be added as a second record — cancel if that isn't what you want.`);
+  }
+
   function decideId(table: IdTable, r: RowReader): { raw: string; id: string; exists: boolean } {
     const raw = r.raw("id").trim();
     const ex = ctx.exists[table];
@@ -184,6 +213,12 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
       summary[section].skipped++;
       return;
     }
+    // Rows with no id are identified by their content, so two identical rows are one record.
+    if (!decision.raw && usedDerived[section].has(decision.id)) {
+      warn(r, "this row is identical to an earlier one — only the first is used.");
+      summary[section].skipped++;
+      return;
+    }
     const rec = build(decision.id);
     if (r.failed || rec === null) {
       summary[section].skipped++;
@@ -192,6 +227,8 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
     if (decision.raw) {
       seen[section].add(decision.raw);
       idMap[section].set(decision.raw, decision.id);
+    } else {
+      usedDerived[section].add(decision.id);
     }
     onIndexed?.(decision.id);
     if (decision.exists) summary[section].alreadyThere++;
@@ -372,7 +409,10 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
         }
         return rec;
       },
-      (rec) => creates.properties.push(rec),
+      (rec) => {
+        warnIfSimilar(r, "property", { id: rec.id, name: rec.name });
+        creates.properties.push(rec);
+      },
       (finalId) => {
         const nm = r.str("name", 200);
         if (nm) index(names.properties, lower(nm), finalId);
@@ -498,14 +538,42 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
           type: r.oneOf("type", INVESTMENT_TYPES, { required: true }) ?? "OTHER",
           notes: r.str("notes", 5000),
           currentValueOverride: r.num("current_value_override", { min: 0 }),
+          market: r.oneOf("market", ["ASX", "WALL_ST"] as const),
+          currency: r.oneOf("currency", ["AUD", "USD"] as const, { fallback: "AUD" }) ?? "AUD",
         };
         return r.failed ? null : rec;
       },
-      (rec) => creates.investments.push(rec),
+      (rec) => {
+        warnIfSimilar(r, "investment", { id: rec.id, name: rec.name, ticker: rec.ticker });
+        creates.investments.push(rec);
+      },
       (finalId) => {
         const nm = r.str("name", 200);
         if (nm) index(names.investments, lower(nm), finalId);
       }
+    );
+  }
+  for (const row of rowsOf("investment_valuations")) {
+    const r = reader("investment_valuations", row);
+    addRow(
+      "investment_valuations",
+      r,
+      (id) => {
+        const investmentId = requiredRef("investments", r, "investment_id", "investment", "an investment");
+        const rec = {
+          id,
+          investmentId: investmentId ?? "",
+          asAt: r.date("as_at", true) ?? new Date(0),
+          units: r.num("units", { required: true, min: 0 }) ?? 0,
+          marketPrice: r.num("market_price", { required: true, min: 0 }) ?? 0,
+          marketValue: r.num("market_value", { required: true, min: 0 }) ?? 0,
+          marketValueAud: r.num("market_value_aud", { required: true, min: 0 }) ?? 0,
+          currency: r.oneOf("currency", ["AUD", "USD"] as const, { fallback: "AUD" }) ?? "AUD",
+          source: r.oneOf("source", ["STAKE", "MANUAL"] as const, { fallback: "MANUAL" }) ?? "MANUAL",
+        };
+        return r.failed ? null : rec;
+      },
+      (rec) => creates.valuations.push(rec)
     );
   }
   for (const row of rowsOf("investment_transactions")) {
@@ -730,6 +798,11 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
       },
       (rec) => creates.documents.push(rec)
     );
+  }
+
+  for (const [name, b] of blocked) {
+    summary[name].inFile = b.rows;
+    summary[name].skipped = b.rows;
   }
 
   for (const name of parsed.unknownSections) warnings.push(`The section [${name}] isn't recognised and was ignored.`);

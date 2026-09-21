@@ -1,6 +1,6 @@
-import type { Account, Bill, CapitalGainDisposal, Category, Dividend, Document, Investment, InvestmentTransaction, Property, PropertyPhoto, PropertyScheduleLine, PropertyYearDetail, Reminder, Transaction } from "@prisma/client";
+import type { Account, Bill, CapitalGainDisposal, Category, Dividend, Document, Investment, InvestmentTransaction, InvestmentValuation, Property, PropertyPhoto, PropertyScheduleLine, PropertyYearDetail, Reminder, Transaction } from "@prisma/client";
 import { escapeFormula, toCsv } from "../../lib/csv";
-import { EXPORT_FORMAT_TITLE, EXPORT_FORMAT_VERSION, SECTION_COLUMNS, SECTION_ORDER, type SectionName } from "./sections";
+import { EXPORT_FORMAT_TITLE, EXPORT_FORMAT_VERSION, EXPORT_SCOPES, SECTION_COLUMNS, SECTION_ORDER, type ExportScope, type SectionName } from "./sections";
 
 export interface ExportData {
   profile: { fullName: string; email: string; timezone: string; easyViewEnabled: boolean; householdName: string };
@@ -12,6 +12,7 @@ export interface ExportData {
   yearDetails: PropertyYearDetail[];
   photos: PropertyPhoto[];
   investments: Investment[];
+  valuations: InvestmentValuation[];
   investmentTransactions: InvestmentTransaction[];
   dividends: Dividend[];
   disposals: CapitalGainDisposal[];
@@ -30,7 +31,7 @@ const b = (v: boolean): string => (v ? "true" : "false");
 const id = (v: string | null | undefined): string => v ?? "";
 
 /** Turns already-loaded data into the export file text. Pure — no database access. */
-export function renderExportCsv(data: ExportData, now: Date = new Date()): string {
+export function renderExportCsv(data: ExportData, now: Date = new Date(), scope: ExportScope = "all"): string {
   const accountName = new Map(data.accounts.map((a) => [a.id, a.name]));
   const categoryName = new Map(data.categories.map((c) => [c.id, c.name]));
   const propertyName = new Map(data.properties.map((p) => [p.id, p.name]));
@@ -40,7 +41,7 @@ export function renderExportCsv(data: ExportData, now: Date = new Date()): strin
   const sections: Record<SectionName, string[][]> = {
     profile: [[t(data.profile.fullName), t(data.profile.email), data.profile.timezone, b(data.profile.easyViewEnabled), t(data.profile.householdName)]],
     accounts: data.accounts.map((a) => [a.id, t(a.name), a.type]),
-    categories: data.categories.map((c) => [c.id, t(c.name), c.direction, b(c.isCustom)]),
+    categories: (scope === "properties" ? data.categories.filter((c) => data.scheduleLines.some((l) => l.categoryId === c.id)) : data.categories).map((c) => [c.id, t(c.name), c.direction, b(c.isCustom)]),
     properties: data.properties.map((p) => [
       p.id, t(p.name), t(p.address), p.propertyType, d(p.purchaseDate), n(p.purchasePrice), n(p.currentEstimatedValue), n(p.loanBalance),
       n(p.loanInterestRate), t(p.rentalAgent), t(p.tenantName), n(p.rentAmount), id(p.rentFrequency), d(p.rentalStartDate),
@@ -53,7 +54,8 @@ export function renderExportCsv(data: ExportData, now: Date = new Date()): strin
     ]),
     property_year_details: data.yearDetails.map((y) => [y.id, y.propertyId, nameOf(propertyName, y.propertyId), y.financialYear, n(y.weeksRented)]),
     property_photos: data.photos.map((x) => [x.id, x.propertyId, nameOf(propertyName, x.propertyId), t(x.fileName), x.contentType, x.filePath, id(x.thumbPath), b(x.isPrimary)]),
-    investments: data.investments.map((i) => [i.id, t(i.name), t(i.ticker), i.type, t(i.notes), n(i.currentValueOverride)]),
+    investments: data.investments.map((i) => [i.id, t(i.name), t(i.ticker), i.type, t(i.notes), n(i.currentValueOverride), id(i.market), i.currency]),
+    investment_valuations: data.valuations.map((v) => [v.id, v.investmentId, nameOf(investmentName, v.investmentId), d(v.asAt), n(v.units), n(v.marketPrice), n(v.marketValue), n(v.marketValueAud), v.currency, v.source]),
     investment_transactions: data.investmentTransactions.map((x) => [
       x.id, x.investmentId, nameOf(investmentName, x.investmentId), x.type, d(x.date), n(x.quantity), n(x.pricePerUnit), n(x.brokerage), t(x.notes),
     ]),
@@ -85,9 +87,12 @@ export function renderExportCsv(data: ExportData, now: Date = new Date()): strin
     [EXPORT_FORMAT_TITLE, String(EXPORT_FORMAT_VERSION)],
     ["Exported at", now.toISOString()],
     ["Note", "This file contains all of your financial information — keep it somewhere safe. Import it from the dashboard to bring your data back."],
+    ...(scope === "all" ? [] : [["Contents", EXPORT_SCOPES[scope].label]]),
     [],
   ];
+  const included = new Set<SectionName>(EXPORT_SCOPES[scope].sections);
   for (const name of SECTION_ORDER) {
+    if (!included.has(name)) continue;
     rows.push([`[${name}]`], [...SECTION_COLUMNS[name]], ...sections[name], []);
   }
   return toCsv(rows);

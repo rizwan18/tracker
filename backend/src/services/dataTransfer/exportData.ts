@@ -1,11 +1,12 @@
 import { prisma } from "../../lib/prisma";
 import { renderExportCsv, type ExportData } from "./renderExport";
+import type { ExportScope } from "./sections";
 
 export { renderExportCsv, type ExportData } from "./renderExport";
 
 /** Loads everything that belongs to a household (and the signed-in person's profile). */
 export async function loadExportData(householdId: string, userId: string): Promise<ExportData> {
-  const [user, household, accounts, categories, properties, owners, scheduleLines, yearDetails, photos, investments, investmentTransactions, dividends, disposals, transactions, bills, reminders, documents] =
+  const [user, household, accounts, categories, properties, owners, scheduleLines, yearDetails, photos, investments, valuations, investmentTransactions, dividends, disposals, transactions, bills, reminders, documents] =
     await Promise.all([
       prisma.user.findUniqueOrThrow({ where: { id: userId } }),
       prisma.household.findUniqueOrThrow({ where: { id: householdId } }),
@@ -17,6 +18,7 @@ export async function loadExportData(householdId: string, userId: string): Promi
       prisma.propertyYearDetail.findMany({ where: { property: { householdId } }, orderBy: [{ propertyId: "asc" }, { financialYear: "asc" }] }),
       prisma.propertyPhoto.findMany({ where: { property: { householdId } }, orderBy: [{ propertyId: "asc" }, { createdAt: "asc" }] }),
       prisma.investment.findMany({ where: { householdId }, orderBy: { createdAt: "asc" } }),
+      prisma.investmentValuation.findMany({ where: { investment: { householdId } }, orderBy: [{ investmentId: "asc" }, { asAt: "asc" }] }),
       prisma.investmentTransaction.findMany({ where: { investment: { householdId } }, orderBy: { date: "asc" } }),
       prisma.dividend.findMany({ where: { investment: { householdId } }, orderBy: { createdAt: "asc" } }),
       prisma.capitalGainDisposal.findMany({ where: { householdId }, orderBy: { saleDate: "asc" } }),
@@ -36,6 +38,7 @@ export async function loadExportData(householdId: string, userId: string): Promi
     yearDetails,
     photos,
     investments,
+    valuations,
     investmentTransactions,
     dividends,
     disposals,
@@ -46,6 +49,6 @@ export async function loadExportData(householdId: string, userId: string): Promi
   };
 }
 
-export async function buildExportCsv(householdId: string, userId: string, now: Date = new Date()): Promise<string> {
-  return renderExportCsv(await loadExportData(householdId, userId), now);
+export async function buildExportCsv(householdId: string, userId: string, now: Date = new Date(), scope: ExportScope = "all"): Promise<string> {
+  return renderExportCsv(await loadExportData(householdId, userId), now, scope);
 }

@@ -2,20 +2,23 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { FriendlyError } from "../../middleware/errorHandler";
 import { parseExportFile, type ParsedFile } from "./parseExport";
+import { ignoredSectionsWarning, restrictToScope } from "./scopes";
 import { collectCandidateIds, emptyExistence, planImport, type ImportContext, type ImportPlan } from "./planImport";
-import { ID_TABLES, SECTION_LABELS, SECTION_ORDER, type IdTable, type SectionName } from "./sections";
+import { ID_TABLES, SECTION_LABELS, SECTION_ORDER, type ExportScope, type IdTable, type SectionName } from "./sections";
 
 type IdRow = { id: string };
 
 /** Reads what the importer needs to know about the household: its categories/accounts, and which ids already exist. */
 export async function loadImportContext(householdId: string, userId: string, candidates: Record<IdTable, string[]>): Promise<ImportContext> {
-  const [user, household, categories, accounts, ppr] = await Promise.all([
+  const [user, household, categories, accounts, ppr, similarProperties, similarInvestments] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } }),
     prisma.household.findUniqueOrThrow({ where: { id: householdId }, select: { portfolioType: true } }),
     prisma.category.findMany({ where: { householdId }, select: { id: true, name: true, direction: true } }),
     prisma.account.findMany({ where: { householdId }, select: { id: true, name: true, type: true } }),
     // one PPR per person across all their portfolios
     prisma.property.findFirst({ where: { propertyType: "PPR", owners: { some: { userId } } }, select: { id: true, name: true } }),
+    prisma.property.findMany({ where: { householdId }, select: { id: true, name: true } }),
+    prisma.investment.findMany({ where: { householdId }, select: { id: true, name: true, ticker: true } }),
   ]);
 
   const sel = { select: { id: true } } as const;
@@ -36,6 +39,10 @@ export async function loadImportContext(householdId: string, userId: string, can
       mine: (ids) => prisma.propertyPhoto.findMany({ where: { id: { in: ids }, property: { householdId } }, ...sel }),
     },
     investments: { any: (ids) => prisma.investment.findMany({ where: { id: { in: ids } }, ...sel }), mine: (ids) => prisma.investment.findMany({ where: { id: { in: ids }, householdId }, ...sel }) },
+    investment_valuations: {
+      any: (ids) => prisma.investmentValuation.findMany({ where: { id: { in: ids } }, ...sel }),
+      mine: (ids) => prisma.investmentValuation.findMany({ where: { id: { in: ids }, investment: { householdId } }, ...sel }),
+    },
     investment_transactions: {
       any: (ids) => prisma.investmentTransaction.findMany({ where: { id: { in: ids } }, ...sel }),
       mine: (ids) => prisma.investmentTransaction.findMany({ where: { id: { in: ids }, investment: { householdId } }, ...sel }),
@@ -62,7 +69,7 @@ export async function loadImportContext(householdId: string, userId: string, can
     })
   );
 
-  return { householdId, userId, userEmail: user.email, portfolioType: household.portfolioType, categories, accounts, ppr, exists };
+  return { householdId, userId, userEmail: user.email, portfolioType: household.portfolioType, categories, accounts, ppr, similar: { properties: similarProperties, investments: similarInvestments }, exists };
 }
 
 const BATCH = 1000;
@@ -92,6 +99,7 @@ export async function applyImportPlan(plan: ImportPlan, ctx: ImportContext): Pro
   add("property_year_details", c.yearDetails, (data) => prisma.propertyYearDetail.createMany({ data, skipDuplicates: true }));
   add("property_photos", c.photos, (data) => prisma.propertyPhoto.createMany({ data, skipDuplicates: true }));
   add("investments", c.investments, (data) => prisma.investment.createMany({ data, skipDuplicates: true }));
+  add("investment_valuations", c.valuations, (data) => prisma.investmentValuation.createMany({ data, skipDuplicates: true }));
   add("investment_transactions", c.investmentTransactions, (data) => prisma.investmentTransaction.createMany({ data, skipDuplicates: true }));
   add("dividends", c.dividends, (data) => prisma.dividend.createMany({ data, skipDuplicates: true }));
   add("capital_gain_disposals", c.disposals, (data) => prisma.capitalGainDisposal.createMany({ data, skipDuplicates: true }));
@@ -147,8 +155,12 @@ export function describePlan(plan: ImportPlan): ImportPreview {
   };
 }
 
-/** Parse + plan (+ apply). Shared by the route so the dry-run and the real import use exactly the same steps. */
-export async function runImport(csv: string, householdId: string, userId: string, opts: { dryRun: boolean; includeProfile: boolean }) {
+/**
+ * Parse + plan (+ apply). Shared by the route so the dry-run and the real import use exactly the same steps.
+ * `scope` limits it to one portfolio (properties or investments); "all" is the "Your data" import.
+ */
+export async function runImport(csv: string, householdId: string, userId: string, opts: { dryRun: boolean; includeProfile: boolean; scope?: ExportScope }) {
+  const scope = opts.scope ?? "all";
   let parsed: ParsedFile;
   try {
     parsed = parseExportFile(csv);
@@ -156,9 +168,19 @@ export async function runImport(csv: string, householdId: string, userId: string
     if (err instanceof FriendlyError) throw err;
     throw new FriendlyError("We couldn't read that file. Please choose the CSV you downloaded from this app.", 400);
   }
+
+  let ignoredWarning: string | null = null;
+  if (scope !== "all") {
+    const restricted = restrictToScope(parsed, scope);
+    parsed = restricted.parsed;
+    ignoredWarning = ignoredSectionsWarning(restricted.ignored, scope);
+  }
+
   const candidates = collectCandidateIds(parsed, householdId);
   const ctx = await loadImportContext(householdId, userId, candidates);
-  const plan = planImport(parsed, ctx, { includeProfile: opts.includeProfile });
+  // A portfolio import never touches the person's profile or household settings.
+  const plan = planImport(parsed, ctx, { includeProfile: scope === "all" && opts.includeProfile });
+  if (ignoredWarning) plan.warnings.unshift(ignoredWarning);
   if (opts.dryRun) return { dryRun: true as const, ...describePlan(plan), added: null };
   const added = await applyImportPlan(plan, ctx);
   return { dryRun: false as const, ...describePlan(plan), added };

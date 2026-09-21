@@ -303,9 +303,14 @@ model Investment {
   type        String   // SHARE | ETF | LIC | MANAGED_FUND | BOND | TERM_DEPOSIT | CRYPTO | P2P | PRIVATE | COLLECTIBLE | OTHER
   notes       String?
   currentValueOverride Float? // manual override for hard-to-price assets
+  /// Where a share/ETF is traded: ASX (Australian) or WALL_ST (US). Empty for older records, which are treated as ASX.
+  market      String?
+  /// Currency the price is quoted in: AUD or USD.
+  currency    String   @default("AUD")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  valuations             InvestmentValuation[]
   investmentTransactions InvestmentTransaction[]
   dividends              Dividend[]
   transactions           Transaction[]
@@ -313,6 +318,25 @@ model Investment {
   capitalGainDisposals   CapitalGainDisposal[]
 
   @@index([householdId])
+}
+
+/// A dated snapshot of a holding: how many units, at what price, worth how much. Imported from a broker
+/// statement (e.g. Stake) or entered by hand. The newest snapshot is the holding's current value.
+model InvestmentValuation {
+  id             String     @id @default(cuid())
+  investmentId   String
+  investment     Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  asAt           DateTime   // statement date
+  units          Float
+  marketPrice    Float      // per unit, in `currency`
+  marketValue    Float      // in `currency`
+  marketValueAud Float      // in Australian dollars
+  currency       String     @default("AUD")
+  source         String     @default("MANUAL") // STAKE | MANUAL
+  createdAt      DateTime   @default(now())
+
+  @@unique([investmentId, asAt])
+  @@index([investmentId])
 }
 
 model InvestmentTransaction {

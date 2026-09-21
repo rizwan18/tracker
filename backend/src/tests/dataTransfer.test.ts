@@ -27,7 +27,11 @@ function sampleData(): ExportData {
       { id: "ph1", propertyId: "propInv", fileName: "front.jpg", contentType: "image/jpeg", filePath: "https://x.public.blob.vercel-storage.com/front.jpg", thumbPath: "https://x.public.blob.vercel-storage.com/thumb-front.jpg", isPrimary: true, createdAt: base.createdAt },
       { id: "ph2", propertyId: "propInv", fileName: "back.jpg", contentType: "image/jpeg", filePath: "https://x.public.blob.vercel-storage.com/back.jpg", thumbPath: null, isPrimary: true, createdAt: base.createdAt },
     ],
-    investments: [{ id: "inv1", householdId: "hA", name: "Vanguard VAS", ticker: "VAS", type: "ETF", notes: null, currentValueOverride: null, ...base }],
+    investments: [{ id: "inv1", householdId: "hA", name: "Vanguard VAS", ticker: "VAS", type: "ETF", notes: null, currentValueOverride: null, market: "ASX", currency: "AUD", ...base }],
+    valuations: [
+      { id: "iv1", investmentId: "inv1", asAt: D("2026-03-31"), units: 100, marketPrice: 95.5, marketValue: 9550, marketValueAud: 9550, currency: "AUD", source: "STAKE", createdAt: base.createdAt },
+      { id: "iv2", investmentId: "inv1", asAt: D("2026-06-30"), units: 120, marketPrice: 100, marketValue: 12000, marketValueAud: 12000, currency: "AUD", source: "MANUAL", createdAt: base.createdAt },
+    ],
     investmentTransactions: [{ id: "it1", investmentId: "inv1", type: "BUY", date: D("2024-02-01"), quantity: 100, pricePerUnit: 90.5, brokerage: 9.95, notes: null, ...base }],
     dividends: [{ id: "dv1", investmentId: "inv1", exDividendDate: D("2026-03-20"), paymentDate: D("2026-04-05"), grossAmount: 100, frankingCredit: 20, frankedAmount: 100, unfrankedAmount: 0, taxWithheld: 0, netAmount: 100, status: "RECEIVED", notes: null, financialYear: "2025-26", ...base }],
     disposals: [{ id: "cg1", householdId: "hA", investmentId: "inv1", purchaseDate: D("2020-01-01"), purchasePrice: 10, purchaseCosts: 1, saleDate: D("2026-01-15"), salePrice: 15, saleCosts: 1, quantity: 100, ownershipPercentage: 100, costBase: 1001, proceeds: 1499, grossGainLoss: 498, holdingPeriodDays: 2205, financialYear: "2025-26", notes: null, ...base }],
@@ -81,6 +85,17 @@ describe("export → import round trip", () => {
     expect(s.reminders.toAdd).toBe(1); // the bill's own reminder is in the file, so no extra one is made
     expect(s.documents.toAdd).toBe(1);
     expect(p.profile).toEqual({ fullName: "Sam Citizen", timezone: "Australia/Melbourne", easyViewEnabled: true, householdName: "Sam's household" });
+  });
+
+  it("restores share holdings: market, currency and every dated valuation", () => {
+    const { plan: p } = plan(csv);
+    expect(p.creates.investments.find((i) => i.name === "Vanguard VAS")).toMatchObject({ market: "ASX", currency: "AUD" });
+    expect(p.summary.investment_valuations.toAdd).toBe(2);
+    expect(p.creates.valuations.map((v) => [v.asAt, v.units, v.marketPrice, v.marketValueAud, v.source])).toEqual([[D("2026-03-31"), 100, 95.5, 9550, "STAKE"], [D("2026-06-30"), 120, 100, 12000, "MANUAL"]]);
+    expect(p.creates.valuations.every((v) => v.investmentId === "inv1")).toBe(true);
+    // a valuation for an investment that isn't in the file is skipped, not guessed
+    const orphan = "Revenue Expense Tracker export,1\r\n\r\n[investment_valuations]\r\nid,investment_id,as_at,units,market_price,market_value,market_value_aud\r\nz1,nope,2026-06-30,1,1,1,1\r\n";
+    expect(plan(orphan).plan.errors.join(" ")).toContain("isn't in the file");
   });
 
   it("restores property manager details and picture links, with a single main picture", () => {
@@ -161,7 +176,7 @@ describe("export → import round trip", () => {
     const created = first.plan.creates;
     const put = (t: keyof ImportContext["exists"], rows: Array<{ id?: string }>) => rows.forEach((r) => r.id && (ctx.exists[t].anywhere.add(r.id), ctx.exists[t].inHousehold.add(r.id)));
     put("accounts", created.accounts); put("categories", created.categories); put("properties", created.properties);
-    put("property_photos", created.photos); put("property_schedule_lines", created.scheduleLines); put("property_year_details", created.yearDetails); put("investments", created.investments);
+    put("property_photos", created.photos); put("property_schedule_lines", created.scheduleLines); put("property_year_details", created.yearDetails); put("investments", created.investments); put("investment_valuations", created.valuations);
     put("investment_transactions", created.investmentTransactions); put("dividends", created.dividends); put("capital_gain_disposals", created.disposals);
     put("transactions", created.transactions); put("bills", created.bills); put("reminders", created.reminders); put("documents", created.documents);
     ctx.categories = created.categories.map((c) => ({ id: c.id!, name: c.name, direction: c.direction }));

@@ -162,10 +162,73 @@ export interface Investment {
   type: string;
   notes: string | null;
   currentValueOverride: number | null;
+  /** Where a share/ETF trades. Older records have none and count as ASX. */
+  market?: "ASX" | "WALL_ST" | null;
+  currency?: "AUD" | "USD";
   investmentTransactions: InvestmentTransactionRecord[];
   dividends: Dividend[];
-  summary: { quantity: number; costBase: number; currentValue: number; unrealisedGainLoss: number; realisedGain: number; realisedLoss: number };
+  summary: {
+    quantity: number;
+    costBase: number;
+    /** false when there's no buy/sell history, so a gain/loss can't be worked out. */
+    costBaseKnown?: boolean;
+    currentValue: number;
+    unrealisedGainLoss: number;
+    realisedGain: number;
+    realisedLoss: number;
+  };
+  /** The newest dated valuation (from a Stake statement or entered by hand). */
+  holding?: Holding | null;
+  /** Past valuations, newest first (detail page only). */
+  valuations?: HoldingValuation[];
   totalDividends: number;
+}
+
+export interface Holding {
+  asAt: string;
+  units: number;
+  marketPrice: number;
+  marketValue: number;
+  marketValueAud: number;
+  currency: "AUD" | "USD";
+  source: "STAKE" | "MANUAL";
+  /** This holding's share of the whole share portfolio, in percent. */
+  weightingPercent: number;
+}
+
+export interface HoldingValuation {
+  id: string;
+  asAt: string;
+  units: number;
+  marketPrice: number;
+  marketValue: number;
+  marketValueAud: number;
+  currency: "AUD" | "USD";
+  source: "STAKE" | "MANUAL";
+}
+
+export interface StakePreviewHolding {
+  market: "ASX" | "WALL_ST";
+  currency: "AUD" | "USD";
+  symbol: string;
+  name: string;
+  weightingPercent: number | null;
+  units: number;
+  marketPrice: number;
+  marketValue: number;
+  marketValueAud: number;
+  action: "create" | "update" | "unchanged";
+  existingName: string | null;
+  investmentType: "SHARE" | "ETF";
+}
+
+export interface StakePreview {
+  dryRun: boolean;
+  report: { reportType: string | null; ownerName: string | null; statementDate: string; generatedOn: string | null; defaultCurrency: string | null };
+  warnings: string[];
+  holdings: StakePreviewHolding[];
+  missing: Array<{ investmentId: string; name: string; ticker: string | null }>;
+  counts: { create: number; update: number; unchanged: number; zeroed: number };
 }
 
 export interface Dividend {
