@@ -162,8 +162,8 @@ export default function InvestmentDetailPage() {
                 <tr>
                   <th className="px-4 py-2.5 font-medium">As at</th>
                   <th className="px-4 py-2.5 font-medium text-right">Units</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Mkt. Price</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Mkt. Value (A$)</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Purchase Price</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Purchase Value (A$)</th>
                   <th className="px-4 py-2.5 font-medium">Source</th>
                   <th />
                 </tr>
@@ -262,9 +262,11 @@ function HoldingCard({ investment, onUpdate }: { investment: Investment; onUpdat
           {cell("Market", MARKET_TITLES[market])}
           {cell("Weighting", h ? formatPercent(h.weightingPercent) : "—")}
           {cell("Units", h ? formatUnits(h.units) : "—")}
-          {cell(isUs ? "Mkt. Price (US$)" : "Mkt. Price", h ? formatPrice(h.marketPrice, isUs ? "USD" : "AUD") : "—")}
-          {isUs && cell("Mkt. Value (US$)", h ? formatUsd(h.marketValue) : "—")}
-          {cell(isUs ? "Mkt. Value (A$)" : "Mkt. Value", h ? formatMoney(h.marketValueAud) : "—")}
+          {cell(isUs ? "Purchase Price (US$)" : "Purchase Price", h ? formatPrice(h.marketPrice, isUs ? "USD" : "AUD") : "—")}
+          {isUs && cell("Purchase Value (US$)", h ? formatUsd(h.marketValue) : "—")}
+          {cell(isUs ? "Purchase Value (A$)" : "Purchase Value", h ? formatMoney(h.marketValueAud) : "—")}
+          {cell(isUs ? "Market Price (US$)" : "Market Price", h?.currentMarketPrice != null ? formatPrice(h.currentMarketPrice, isUs ? "USD" : "AUD") : "—")}
+          {cell(isUs ? "Market Value (A$)" : "Market Value", h?.currentMarketValue != null ? formatMoney(h.currentMarketValue) : "—")}
         </dl>
       </Card>
     </section>

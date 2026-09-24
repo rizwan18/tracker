@@ -65,6 +65,10 @@ function holdingDto(v: ValuationRow | undefined | null, weightingPercent: number
     currency: v.currency,
     source: v.source,
     weightingPercent: weightingPercent ?? 0,
+    // Read-only, blank for now. `marketPrice` / `marketValue*` above are the purchase figures (units × price
+    // entered by hand or imported from a broker report); these two are reserved for a live market quote.
+    currentMarketPrice: null as number | null,
+    currentMarketValue: null as number | null,
   };
 }
 

@@ -22,7 +22,7 @@ const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[$,\s]/g,
 
 /**
  * Add an investment. Shares, ETFs and LICs are entered the way a Stake report lists them
- * (Symbol, Name, market, Units, Mkt. Price, Mkt. Value); everything else keeps the simple form.
+ * (Symbol, Name, market, Units, Purchase Price, Purchase Value, plus read-only Market Price / Value); everything else keeps the simple form.
  */
 export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const [type, setType] = useState("SHARE");
@@ -41,7 +41,7 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
   const isUs = isStock && market === "WALL_ST";
   const currency = isUs ? "USD" : "AUD";
 
-  // Mkt. Value = units × price (in the market's own currency), shown as A$ too for Wall St.
+  // Purchase Value = units × price (in the market's own currency), shown as A$ too for Wall St.
   const value = useMemo(() => {
     const u = num(units);
     const p = num(price);
@@ -62,7 +62,7 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
       const u = num(units);
       const p = num(price);
       if (u !== null || p !== null) {
-        if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p) || u < 0 || p < 0) return setError("Please enter the units and the market price as numbers.");
+        if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p) || u < 0 || p < 0) return setError("Please enter the units and the purchase price as numbers.");
         const rate = num(fxRate);
         if (isUs && (!rate || rate <= 0)) return setError("Please enter the exchange rate (A$ per US$) so the value can be shown in Australian dollars.");
         body.valuation = { asAt, units: u, marketPrice: p, ...(isUs ? { fxRate: rate } : {}) };
@@ -116,8 +116,16 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
             <Field label="Units" htmlFor="inv-units">
               <input id="inv-units" inputMode="decimal" className={inputClass} value={units} onChange={(e) => setUnits(e.target.value)} placeholder="0" />
             </Field>
-            <Field label={isUs ? "Mkt. Price (US$)" : "Mkt. Price"} htmlFor="inv-price">
+            <Field label={isUs ? "Purchase Price (US$)" : "Purchase Price"} htmlFor="inv-price">
               <input id="inv-price" inputMode="decimal" className={inputClass} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={isUs ? "Market Price (US$)" : "Market Price"} htmlFor="inv-mkt-price" hint="Read-only">
+              <input id="inv-mkt-price" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
+            </Field>
+            <Field label={isUs ? "Market Value (US$)" : "Market Value"} htmlFor="inv-mkt-value" hint="Read-only">
+              <input id="inv-mkt-value" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
             </Field>
           </div>
           {isUs && (
@@ -125,12 +133,12 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
               <input id="inv-fx" inputMode="decimal" className={inputClass} value={fxRate} onChange={(e) => setFxRate(e.target.value)} placeholder="1.44" />
             </Field>
           )}
-          <Field label="Price as at" htmlFor="inv-asat" hint="The date of the price.">
+          <Field label="Price as at" htmlFor="inv-asat" hint="The date of the purchase price.">
             <input id="inv-asat" type="date" className={inputClass} value={asAt} onChange={(e) => setAsAt(e.target.value)} />
           </Field>
           {value && (
             <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">
-              Mkt. Value: <span className="font-medium">{isUs ? formatUsd(value.own) : formatMoney(value.own)}</span>
+              Purchase Value: <span className="font-medium">{isUs ? formatUsd(value.own) : formatMoney(value.own)}</span>
               {isUs && value.aud !== null && (
                 <>
                   {" "}

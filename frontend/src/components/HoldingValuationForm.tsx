@@ -26,7 +26,7 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p) || u < 0 || p < 0) return setError("Please enter the units and the market price as numbers.");
+    if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p) || u < 0 || p < 0) return setError("Please enter the units and the purchase price as numbers.");
     if (isUs && (!rate || rate <= 0)) return setError("Please enter the exchange rate (A$ per US$).");
     setSaving(true);
     try {
@@ -49,8 +49,16 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
         <Field label="Units" htmlFor="hv-units">
           <input id="hv-units" inputMode="decimal" className={inputClass} value={units} onChange={(e) => setUnits(e.target.value)} />
         </Field>
-        <Field label={isUs ? "Mkt. Price (US$)" : "Mkt. Price"} htmlFor="hv-price">
+        <Field label={isUs ? "Purchase Price (US$)" : "Purchase Price"} htmlFor="hv-price">
           <input id="hv-price" inputMode="decimal" className={inputClass} value={price} onChange={(e) => setPrice(e.target.value)} />
+        </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={isUs ? "Market Price (US$)" : "Market Price"} htmlFor="hv-mkt-price" hint="Read-only">
+          <input id="hv-mkt-price" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
+        </Field>
+        <Field label={isUs ? "Market Value (US$)" : "Market Value"} htmlFor="hv-mkt-value" hint="Read-only">
+          <input id="hv-mkt-value" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
         </Field>
       </div>
       {isUs && (
@@ -60,7 +68,7 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
       )}
       {own !== null && (
         <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">
-          Mkt. Value: <span className="font-medium">{isUs ? formatUsd(own) : formatMoney(own)}</span>
+          Purchase Value: <span className="font-medium">{isUs ? formatUsd(own) : formatMoney(own)}</span>
           {isUs && rate && rate > 0 && (
             <>
               {" "}

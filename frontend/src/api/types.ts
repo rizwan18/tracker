@@ -194,6 +194,9 @@ export interface Holding {
   source: "STAKE" | "MANUAL";
   /** This holding's share of the whole share portfolio, in percent. */
   weightingPercent: number;
+  /** Read-only live market quote/value. Blank (null) until a market data source is wired in. */
+  currentMarketPrice: number | null;
+  currentMarketValue: number | null;
 }
 
 export interface HoldingValuation {

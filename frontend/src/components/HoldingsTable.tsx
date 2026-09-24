@@ -6,7 +6,8 @@ import { formatDateUtc, formatMoney } from "../lib/format";
 
 /**
  * Share and ETF holdings laid out like a Stake portfolio report:
- * Symbol · Name · Weighting · Units · Mkt. Price · Mkt. Value (Wall St shows both US$ and A$).
+ * Symbol · Name · Weighting · Units · Purchase Price · Purchase Value (Wall St shows both US$ and A$) ·
+ * Market Price · Market Value (read-only, blank until a live market quote is available).
  */
 export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST"; holdings: Investment[] }) {
   const isUs = market === "WALL_ST";
@@ -20,6 +21,8 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
       price: h ? h.marketPrice : null,
       value: h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null,
       valueAud: h ? h.marketValueAud : inv.summary.currentValue > 0 ? inv.summary.currentValue : null,
+      marketPrice: h?.currentMarketPrice ?? null,
+      marketValue: h?.currentMarketValue ?? null,
     };
   });
   const sum = (pick: (r: (typeof rows)[number]) => number | null) => rows.reduce((s, r) => s + (pick(r) ?? 0), 0);
@@ -41,26 +44,28 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
         )}
       </div>
       <Card className="p-0 overflow-x-auto">
-        <table className="w-full text-sm min-w-[36rem]">
+        <table className="w-full text-sm min-w-[44rem]">
           <thead className="text-left text-xs text-[var(--color-ink-soft)] bg-[var(--color-paper-dim)]">
             <tr>
               <th className="px-4 py-2.5 font-medium">Symbol</th>
               <th className="px-4 py-2.5 font-medium">Name</th>
               <th className="px-4 py-2.5 font-medium text-right">Weighting</th>
               <th className="px-4 py-2.5 font-medium text-right">Units</th>
-              <th className="px-4 py-2.5 font-medium text-right">Mkt. Price</th>
+              <th className="px-4 py-2.5 font-medium text-right">Purchase Price</th>
               {isUs ? (
                 <>
-                  <th className="px-4 py-2.5 font-medium text-right">Mkt. Value (US$)</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Mkt. Value (A$)</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Purchase Value (US$)</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Purchase Value (A$)</th>
                 </>
               ) : (
-                <th className="px-4 py-2.5 font-medium text-right">Mkt. Value</th>
+                <th className="px-4 py-2.5 font-medium text-right">Purchase Value</th>
               )}
+              <th className="px-4 py-2.5 font-medium text-right">Market Price</th>
+              <th className="px-4 py-2.5 font-medium text-right">Market Value</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-line)]">
-            {rows.map(({ inv, weighting, units, price, value, valueAud }) => (
+            {rows.map(({ inv, weighting, units, price, value, valueAud, marketPrice, marketValue }) => (
               <tr key={inv.id} className="hover:bg-[var(--color-paper-dim)]">
                 <td className="px-4 py-3 font-medium">
                   <Link to={`/investments/${inv.id}`} className="text-[var(--color-eucalyptus-dark)] hover:underline">
@@ -83,6 +88,8 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
                 ) : (
                   <td className="px-4 py-3 text-right tabular-nums font-medium">{valueAud !== null ? formatMoney(valueAud) : dash}</td>
                 )}
+                <td className="px-4 py-3 text-right tabular-nums">{marketPrice !== null ? formatPrice(marketPrice, currency) : dash}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{marketValue !== null ? formatMoney(marketValue) : dash}</td>
               </tr>
             ))}
           </tbody>
@@ -101,6 +108,7 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
               ) : (
                 <td className="px-4 py-3 text-right tabular-nums">{formatMoney(sum((r) => r.valueAud))}</td>
               )}
+              <td className="px-4 py-3" colSpan={2} />
             </tr>
           </tfoot>
         </table>
