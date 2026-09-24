@@ -22,7 +22,7 @@ const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[$,\s]/g,
 
 /**
  * Add an investment. Shares, ETFs and LICs are entered the way a Stake report lists them
- * (Symbol, Name, market, Units, Purchase Price, Purchase Value, plus read-only Market Price / Value); everything else keeps the simple form.
+ * (Symbol, Name, market, Units, Purchase Price, Purchase Value, plus read-only Market Price / Value / Unrealised Gain/Loss); everything else keeps the simple form.
  */
 export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const [type, setType] = useState("SHARE");
@@ -31,7 +31,6 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
   const [market, setMarket] = useState<"ASX" | "WALL_ST">("ASX");
   const [units, setUnits] = useState("");
   const [price, setPrice] = useState("");
-  const [fxRate, setFxRate] = useState("");
   const [asAt, setAsAt] = useState(toInputDate(new Date()));
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -41,15 +40,13 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
   const isUs = isStock && market === "WALL_ST";
   const currency = isUs ? "USD" : "AUD";
 
-  // Purchase Value = units × price (in the market's own currency), shown as A$ too for Wall St.
-  const value = useMemo(() => {
+  // Purchase Value = units × price, in the market's own currency (US$ for Wall St, A$ for ASX). No conversion.
+  const purchaseValue = useMemo(() => {
     const u = num(units);
     const p = num(price);
     if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p)) return null;
-    const own = Math.round(u * p * 100) / 100;
-    const rate = num(fxRate);
-    return { own, aud: isUs ? (rate && rate > 0 ? Math.round(own * rate * 100) / 100 : null) : own };
-  }, [units, price, fxRate, isUs]);
+    return Math.round(u * p * 100) / 100;
+  }, [units, price]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -63,9 +60,7 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
       const p = num(price);
       if (u !== null || p !== null) {
         if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p) || u < 0 || p < 0) return setError("Please enter the units and the purchase price as numbers.");
-        const rate = num(fxRate);
-        if (isUs && (!rate || rate <= 0)) return setError("Please enter the exchange rate (A$ per US$) so the value can be shown in Australian dollars.");
-        body.valuation = { asAt, units: u, marketPrice: p, ...(isUs ? { fxRate: rate } : {}) };
+        body.valuation = { asAt, units: u, marketPrice: p };
       }
     }
     setSaving(true);
@@ -128,23 +123,15 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
               <input id="inv-mkt-value" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
             </Field>
           </div>
-          {isUs && (
-            <Field label="Exchange rate (A$ per US$)" htmlFor="inv-fx" hint="e.g. 1.44 — used to show the value in Australian dollars.">
-              <input id="inv-fx" inputMode="decimal" className={inputClass} value={fxRate} onChange={(e) => setFxRate(e.target.value)} placeholder="1.44" />
-            </Field>
-          )}
+          <Field label="Unrealised Gain/Loss" htmlFor="inv-gain-loss" hint="Read-only">
+            <input id="inv-gain-loss" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
+          </Field>
           <Field label="Price as at" htmlFor="inv-asat" hint="The date of the purchase price.">
             <input id="inv-asat" type="date" className={inputClass} value={asAt} onChange={(e) => setAsAt(e.target.value)} />
           </Field>
-          {value && (
+          {purchaseValue !== null && (
             <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">
-              Purchase Value: <span className="font-medium">{isUs ? formatUsd(value.own) : formatMoney(value.own)}</span>
-              {isUs && value.aud !== null && (
-                <>
-                  {" "}
-                  · <span className="font-medium">{formatMoney(value.aud)}</span>
-                </>
-              )}
+              Purchase Value: <span className="font-medium">{isUs ? formatUsd(purchaseValue) : formatMoney(purchaseValue)}</span>
             </p>
           )}
         </>

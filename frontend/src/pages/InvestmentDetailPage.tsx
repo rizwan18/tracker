@@ -58,6 +58,9 @@ export default function InvestmentDetailPage() {
 
   if (loading || !investment) return <p className="text-[var(--color-ink-soft)]">Loading…</p>;
 
+  // Wall St holdings are shown in US$ only.
+  const isStockUs = isStock(investment) && marketOf(investment) === "WALL_ST";
+
   return (
     <div className="space-y-6">
       <SectionHeading
@@ -163,7 +166,7 @@ export default function InvestmentDetailPage() {
                   <th className="px-4 py-2.5 font-medium">As at</th>
                   <th className="px-4 py-2.5 font-medium text-right">Units</th>
                   <th className="px-4 py-2.5 font-medium text-right">Purchase Price</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Purchase Value (A$)</th>
+                  <th className="px-4 py-2.5 font-medium text-right">{isStockUs ? "Purchase Value (US$)" : "Purchase Value"}</th>
                   <th className="px-4 py-2.5 font-medium">Source</th>
                   <th />
                 </tr>
@@ -174,7 +177,7 @@ export default function InvestmentDetailPage() {
                     <td className="px-4 py-2.5">{formatDateUtc(v.asAt)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{formatUnits(v.units)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{formatPrice(v.marketPrice, v.currency)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatMoney(v.marketValueAud)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{isStockUs ? formatUsd(v.marketValue) : formatMoney(v.marketValue)}</td>
                     <td className="px-4 py-2.5 text-[var(--color-ink-soft)]">{v.source === "STAKE" ? "Stake" : "Entered by hand"}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button onClick={() => handleDeleteValuation(v.id)} className="text-xs text-[var(--color-brick)] hover:underline" aria-label={`Remove the ${formatDateUtc(v.asAt)} entry`}>
@@ -263,10 +266,10 @@ function HoldingCard({ investment, onUpdate }: { investment: Investment; onUpdat
           {cell("Weighting", h ? formatPercent(h.weightingPercent) : "—")}
           {cell("Units", h ? formatUnits(h.units) : "—")}
           {cell(isUs ? "Purchase Price (US$)" : "Purchase Price", h ? formatPrice(h.marketPrice, isUs ? "USD" : "AUD") : "—")}
-          {isUs && cell("Purchase Value (US$)", h ? formatUsd(h.marketValue) : "—")}
-          {cell(isUs ? "Purchase Value (A$)" : "Purchase Value", h ? formatMoney(h.marketValueAud) : "—")}
+          {cell(isUs ? "Purchase Value (US$)" : "Purchase Value", h ? (isUs ? formatUsd(h.marketValue) : formatMoney(h.marketValue)) : "—")}
           {cell(isUs ? "Market Price (US$)" : "Market Price", h?.currentMarketPrice != null ? formatPrice(h.currentMarketPrice, isUs ? "USD" : "AUD") : "—")}
-          {cell(isUs ? "Market Value (A$)" : "Market Value", h?.currentMarketValue != null ? formatMoney(h.currentMarketValue) : "—")}
+          {cell(isUs ? "Market Value (US$)" : "Market Value", h?.currentMarketValue != null ? (isUs ? formatUsd(h.currentMarketValue) : formatMoney(h.currentMarketValue)) : "—")}
+          {cell("Unrealised Gain/Loss", h?.unrealisedGainLoss != null ? (isUs ? formatUsd(h.unrealisedGainLoss) : formatMoney(h.unrealisedGainLoss)) : "—")}
         </dl>
       </Card>
     </section>

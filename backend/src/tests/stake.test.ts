@@ -203,9 +203,10 @@ describe("holdings helpers", () => {
     expect([...w.values()].reduce((s, v) => s + v, 0)).toBeCloseTo(100, 1);
     expect(computeWeightings([{ id: "z", valueAud: 0 }]).get("z")).toBe(0);
   });
-  it("values a US holding in A$ from an exchange rate, and refuses without one", () => {
+  it("values a US holding in US$ only (no conversion) unless an exchange rate is supplied", () => {
     expect(valueHolding(2, 289.36, "USD", 1.4444)).toEqual({ marketValue: 578.72, marketValueAud: 835.9 });
-    expect(valueHolding(2, 289.36, "USD", null)).toBeNull();
+    expect(valueHolding(2, 289.36, "USD", null)).toEqual({ marketValue: 578.72, marketValueAud: 578.72 });
+    expect(valueHolding(2, 289.36, "USD")).toEqual({ marketValue: 578.72, marketValueAud: 578.72 });
     expect(valueHolding(417, 28.88, "AUD", null)).toEqual({ marketValue: 12042.96, marketValueAud: 12042.96 });
   });
 });

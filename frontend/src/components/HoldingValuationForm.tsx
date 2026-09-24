@@ -14,23 +14,20 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
   const [asAt, setAsAt] = useState(toInputDate(new Date()));
   const [units, setUnits] = useState(h ? String(h.units) : "");
   const [price, setPrice] = useState(h ? String(h.marketPrice) : "");
-  const [fxRate, setFxRate] = useState(h && isUs && h.marketValue > 0 ? String(Math.round((h.marketValueAud / h.marketValue) * 10000) / 10000) : "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const u = num(units);
   const p = num(price);
   const own = u !== null && p !== null && !Number.isNaN(u) && !Number.isNaN(p) ? Math.round(u * p * 100) / 100 : null;
-  const rate = num(fxRate);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p) || u < 0 || p < 0) return setError("Please enter the units and the purchase price as numbers.");
-    if (isUs && (!rate || rate <= 0)) return setError("Please enter the exchange rate (A$ per US$).");
     setSaving(true);
     try {
-      await api.put(`/investments/${investment.id}/valuation`, { asAt, units: u, marketPrice: p, ...(isUs ? { fxRate: rate } : {}) });
+      await api.put(`/investments/${investment.id}/valuation`, { asAt, units: u, marketPrice: p });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "We couldn't save this. Please try again.");
@@ -61,20 +58,12 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
           <input id="hv-mkt-value" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
         </Field>
       </div>
-      {isUs && (
-        <Field label="Exchange rate (A$ per US$)" htmlFor="hv-fx">
-          <input id="hv-fx" inputMode="decimal" className={inputClass} value={fxRate} onChange={(e) => setFxRate(e.target.value)} />
-        </Field>
-      )}
+      <Field label="Unrealised Gain/Loss" htmlFor="hv-gain-loss" hint="Read-only">
+        <input id="hv-gain-loss" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
+      </Field>
       {own !== null && (
         <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">
           Purchase Value: <span className="font-medium">{isUs ? formatUsd(own) : formatMoney(own)}</span>
-          {isUs && rate && rate > 0 && (
-            <>
-              {" "}
-              · <span className="font-medium">{formatMoney(Math.round(own * rate * 100) / 100)}</span>
-            </>
-          )}
         </p>
       )}
       <div className="flex justify-end gap-2">

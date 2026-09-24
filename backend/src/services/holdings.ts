@@ -26,10 +26,13 @@ export function computeWeightings(items: Array<{ id: string; valueAud: number }>
   return new Map(items.map((i) => [i.id, total > 0 ? round2((Math.max(0, i.valueAud) / total) * 100) : 0]));
 }
 
-/** Value of a holding from units and price, in its own currency and in A$ (US holdings need an exchange rate). */
-export function valueHolding(units: number, marketPrice: number, currency: string, fxRate: number | null): { marketValue: number; marketValueAud: number } | null {
+/**
+ * Value of a holding from units and price, in its own currency. US holdings are shown in US$ only, so no
+ * exchange rate is needed: when none is given, `marketValueAud` simply mirrors `marketValue` (no conversion).
+ * An `fxRate` is still honoured if a caller supplies one (e.g. older API clients).
+ */
+export function valueHolding(units: number, marketPrice: number, currency: string, fxRate: number | null = null): { marketValue: number; marketValueAud: number } {
   const marketValue = round2(units * marketPrice);
-  if (currency !== "USD") return { marketValue, marketValueAud: marketValue };
-  if (!fxRate || fxRate <= 0) return null;
+  if (currency !== "USD" || !fxRate || fxRate <= 0) return { marketValue, marketValueAud: marketValue };
   return { marketValue, marketValueAud: round2(marketValue * fxRate) };
 }
