@@ -75,7 +75,7 @@ export const investmentValuationSchema = z.object({
   asAt: z.coerce.date(),
   units: z.coerce.number().min(0, "Units can't be negative.").max(1e12),
   marketPrice: z.coerce.number().min(0, "The price can't be negative.").max(1e9),
-  /** Australian dollars per US dollar — needed for US holdings so the value can be shown in A$. */
+  /** Optional and no longer collected by the app (US holdings are shown in US$ only); still accepted from older clients. */
   fxRate: z.coerce.number().positive("The exchange rate must be more than zero.").max(100).optional().nullable(),
 });
 

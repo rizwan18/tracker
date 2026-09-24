@@ -197,6 +197,8 @@ export interface Holding {
   /** Read-only live market quote/value. Blank (null) until a market data source is wired in. */
   currentMarketPrice: number | null;
   currentMarketValue: number | null;
+  /** Read-only. Blank (null) until a live market value is available to compare with the purchase value. */
+  unrealisedGainLoss: number | null;
 }
 
 export interface HoldingValuation {

@@ -66,9 +66,11 @@ function holdingDto(v: ValuationRow | undefined | null, weightingPercent: number
     source: v.source,
     weightingPercent: weightingPercent ?? 0,
     // Read-only, blank for now. `marketPrice` / `marketValue*` above are the purchase figures (units × price
-    // entered by hand or imported from a broker report); these two are reserved for a live market quote.
+    // entered by hand or imported from a broker report); these are reserved for a live market quote.
     currentMarketPrice: null as number | null,
     currentMarketValue: null as number | null,
+    // Read-only and blank until a live market value is available to compare against the purchase value.
+    unrealisedGainLoss: null as number | null,
   };
 }
 
@@ -102,7 +104,6 @@ router.post(
     const householdId = householdOf(req);
     const { valuation, ...data } = investmentSchema.extend({ valuation: investmentValuationSchema.optional().nullable() }).parse(req.body);
     const values = valuation ? valueHolding(valuation.units, valuation.marketPrice, data.currency, valuation.fxRate ?? null) : null;
-    if (valuation && !values) throw new FriendlyError("Please enter the exchange rate (A$ per US$) for a US holding.", 400);
     const investment = await prisma.investment.create({
       data: {
         householdId,
@@ -245,7 +246,6 @@ router.put(
     if (!investment) throw new FriendlyError("We couldn't find this investment.", 404);
     const data = investmentValuationSchema.parse(req.body);
     const values = valueHolding(data.units, data.marketPrice, investment.currency, data.fxRate ?? null);
-    if (!values) throw new FriendlyError("Please enter the exchange rate (A$ per US$) for a US holding.", 400);
     const fields = { units: data.units, marketPrice: data.marketPrice, marketValue: values.marketValue, marketValueAud: values.marketValueAud, currency: investment.currency, source: "MANUAL" };
     const saved = await prisma.investmentValuation.upsert({
       where: { investmentId_asAt: { investmentId: investment.id, asAt: data.asAt } },

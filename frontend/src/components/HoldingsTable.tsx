@@ -4,10 +4,12 @@ import { Card } from "./ui";
 import { MARKET_TITLES, formatPercent, formatPrice, formatUnits, formatUsd } from "../lib/holdings";
 import { formatDateUtc, formatMoney } from "../lib/format";
 
+const fmtValue = (n: number, isUs: boolean) => (isUs ? formatUsd(n) : formatMoney(n));
+
 /**
  * Share and ETF holdings laid out like a Stake portfolio report:
- * Symbol · Name · Weighting · Units · Purchase Price · Purchase Value (Wall St shows both US$ and A$) ·
- * Market Price · Market Value (read-only, blank until a live market quote is available).
+ * Symbol · Name · Weighting · Units · Purchase Price · Purchase Value · Market Price · Market Value · Unrealised Gain/Loss.
+ * Wall St Equities are shown in US$ only (no A$ conversion). The last three columns are read-only and blank until a live market quote is available.
  */
 export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST"; holdings: Investment[] }) {
   const isUs = market === "WALL_ST";
@@ -19,10 +21,11 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
       weighting: h ? h.weightingPercent : null,
       units: h ? h.units : inv.summary.quantity > 0 ? inv.summary.quantity : null,
       price: h ? h.marketPrice : null,
+      // Wall St values are US$ only; ASX values are A$ (falls back to the summary value for holdings with no valuation).
       value: h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null,
-      valueAud: h ? h.marketValueAud : inv.summary.currentValue > 0 ? inv.summary.currentValue : null,
       marketPrice: h?.currentMarketPrice ?? null,
       marketValue: h?.currentMarketValue ?? null,
+      unrealisedGainLoss: h?.unrealisedGainLoss ?? null,
     };
   });
   const sum = (pick: (r: (typeof rows)[number]) => number | null) => rows.reduce((s, r) => s + (pick(r) ?? 0), 0);
@@ -44,28 +47,22 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
         )}
       </div>
       <Card className="p-0 overflow-x-auto">
-        <table className="w-full text-sm min-w-[44rem]">
+        <table className="w-full text-sm min-w-[48rem]">
           <thead className="text-left text-xs text-[var(--color-ink-soft)] bg-[var(--color-paper-dim)]">
             <tr>
               <th className="px-4 py-2.5 font-medium">Symbol</th>
               <th className="px-4 py-2.5 font-medium">Name</th>
-              <th className="px-4 py-2.5 font-medium text-right">Weighting</th>
-              <th className="px-4 py-2.5 font-medium text-right">Units</th>
-              <th className="px-4 py-2.5 font-medium text-right">Purchase Price</th>
-              {isUs ? (
-                <>
-                  <th className="px-4 py-2.5 font-medium text-right">Purchase Value (US$)</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Purchase Value (A$)</th>
-                </>
-              ) : (
-                <th className="px-4 py-2.5 font-medium text-right">Purchase Value</th>
-              )}
-              <th className="px-4 py-2.5 font-medium text-right">Market Price</th>
-              <th className="px-4 py-2.5 font-medium text-right">Market Value</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Weighting</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Units</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Purchase Price</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">{isUs ? "Purchase Value (US$)" : "Purchase Value"}</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Market Price</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Market Value</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Unrealised Gain/Loss</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-line)]">
-            {rows.map(({ inv, weighting, units, price, value, valueAud, marketPrice, marketValue }) => (
+            {rows.map(({ inv, weighting, units, price, value, marketPrice, marketValue, unrealisedGainLoss }) => (
               <tr key={inv.id} className="hover:bg-[var(--color-paper-dim)]">
                 <td className="px-4 py-3 font-medium">
                   <Link to={`/investments/${inv.id}`} className="text-[var(--color-eucalyptus-dark)] hover:underline">
@@ -80,16 +77,10 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
                 <td className="px-4 py-3 text-right tabular-nums">{weighting !== null ? formatPercent(weighting) : dash}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{units !== null ? formatUnits(units) : dash}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{price !== null ? formatPrice(price, currency) : dash}</td>
-                {isUs ? (
-                  <>
-                    <td className="px-4 py-3 text-right tabular-nums">{value !== null ? formatUsd(value) : dash}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium">{valueAud !== null ? formatMoney(valueAud) : dash}</td>
-                  </>
-                ) : (
-                  <td className="px-4 py-3 text-right tabular-nums font-medium">{valueAud !== null ? formatMoney(valueAud) : dash}</td>
-                )}
+                <td className="px-4 py-3 text-right tabular-nums font-medium">{value !== null ? fmtValue(value, isUs) : dash}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{marketPrice !== null ? formatPrice(marketPrice, currency) : dash}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{marketValue !== null ? formatMoney(marketValue) : dash}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{marketValue !== null ? fmtValue(marketValue, isUs) : dash}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{unrealisedGainLoss !== null ? fmtValue(unrealisedGainLoss, isUs) : dash}</td>
               </tr>
             ))}
           </tbody>
@@ -100,15 +91,8 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
               </td>
               <td className="px-4 py-3 text-right tabular-nums">{formatPercent(sum((r) => r.weighting))}</td>
               <td className="px-4 py-3" colSpan={2} />
-              {isUs ? (
-                <>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatUsd(sum((r) => r.value))}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatMoney(sum((r) => r.valueAud))}</td>
-                </>
-              ) : (
-                <td className="px-4 py-3 text-right tabular-nums">{formatMoney(sum((r) => r.valueAud))}</td>
-              )}
-              <td className="px-4 py-3" colSpan={2} />
+              <td className="px-4 py-3 text-right tabular-nums">{fmtValue(sum((r) => r.value), isUs)}</td>
+              <td className="px-4 py-3" colSpan={3} />
             </tr>
           </tfoot>
         </table>
