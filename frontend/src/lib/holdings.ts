@@ -8,6 +8,17 @@ export const marketOf = (inv: Pick<Investment, "market">): "ASX" | "WALL_ST" => 
 
 export const MARKET_TITLES: Record<"ASX" | "WALL_ST", string> = { ASX: "Aus Equities", WALL_ST: "Wall St Equities" };
 
+/**
+ * The app stores plain tickers (e.g. "CBA", "AAPL"); the market-data provider needs
+ * the ASX ".AX" suffix for Australian securities (e.g. "CBA.AX") — see
+ * backend/src/lib/marketData.ts. US tickers are used as-is.
+ */
+export function toProviderTicker(ticker: string, market: "ASX" | "WALL_ST"): string {
+  const t = ticker.trim().toUpperCase();
+  if (market === "ASX" && !t.endsWith(".AX")) return `${t}.AX`;
+  return t;
+}
+
 /** 417 → "417", 0.2 → "0.2", 1234.5678 → "1,234.5678" (up to four decimals, no padding). */
 export function formatUnits(n: number): string {
   return new Intl.NumberFormat("en-AU", { maximumFractionDigits: 4 }).format(n);

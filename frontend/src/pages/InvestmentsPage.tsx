@@ -8,6 +8,7 @@ import { InvestmentForm } from "../components/InvestmentForm";
 import { HoldingsTable } from "../components/HoldingsTable";
 import { isStock, marketOf } from "../lib/holdings";
 import { formatCurrency, formatCurrencySigned } from "../lib/format";
+import { useLiveHoldingPrices } from "../hooks/useLiveHoldingPrices";
 
 const TYPE_LABELS: Record<string, string> = {
   SHARE: "Share",
@@ -37,6 +38,8 @@ export default function InvestmentsPage() {
   }, []);
 
   useEffect(load, [load]);
+  // Fetched fresh every time `investments` changes (i.e. every load of this page).
+  const livePrices = useLiveHoldingPrices(investments);
 
   const totalValue = investments.reduce((s, i) => s + i.summary.currentValue, 0);
   // Only holdings with a buy/sell history have a cost to compare against.
@@ -102,8 +105,8 @@ export default function InvestmentsPage() {
         />
       ) : (
         <div className="space-y-8">
-          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} />}
-          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} />}
+          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} livePrices={livePrices} />}
+          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} livePrices={livePrices} />}
           {stocks.length > 0 && latestStatement === undefined && <p className="text-xs text-[var(--color-ink-soft)]">Units and prices come from what you record on each holding.</p>}
 
           {others.length > 0 && (

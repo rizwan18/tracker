@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { Investment } from "../api/types";
+import type { Investment, LatestPrice } from "../api/types";
 import { Card } from "./ui";
 import { MARKET_TITLES, formatPercent, formatPrice, formatUnits, formatUsd } from "../lib/holdings";
 import { formatDateUtc, formatMoney } from "../lib/format";
@@ -9,23 +9,34 @@ const fmtValue = (n: number, isUs: boolean) => (isUs ? formatUsd(n) : formatMone
 /**
  * Share and ETF holdings laid out like a Stake portfolio report:
  * Symbol · Name · Weighting · Units · Purchase Price · Purchase Value · Market Price · Market Value · Unrealised Gain/Loss.
- * Wall St Equities are shown in US$ only (no A$ conversion). The last three columns are read-only and blank until a live market quote is available.
+ * Wall St Equities are shown in US$ only (no A$ conversion).
+ *
+ * Market Price / Market Value / Unrealised Gain/Loss come from `livePrices` (see
+ * useLiveHoldingPrices), fetched fresh on every page load from the same market-data
+ * endpoint as the Check Security Price page. A holding is blank ("—") in these columns
+ * until its live price has loaded, or if no live price could be found for it.
  */
-export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST"; holdings: Investment[] }) {
+export function HoldingsTable({ market, holdings, livePrices }: { market: "ASX" | "WALL_ST"; holdings: Investment[]; livePrices?: Record<string, LatestPrice> }) {
   const isUs = market === "WALL_ST";
   const currency = isUs ? "USD" : "AUD";
   const rows = holdings.map((inv) => {
     const h = inv.holding ?? null;
+    const units = h ? h.units : inv.summary.quantity > 0 ? inv.summary.quantity : null;
+    const live = livePrices?.[inv.id] ?? null;
+    const marketPrice = live ? live.price : null;
+    const marketValue = live && units !== null ? live.price * units : null;
+    // Only compare against a cost base when there's actual buy/sell history to derive one from.
+    const unrealisedGainLoss = marketValue !== null && inv.summary.costBaseKnown !== false ? marketValue - inv.summary.costBase : null;
     return {
       inv,
       weighting: h ? h.weightingPercent : null,
-      units: h ? h.units : inv.summary.quantity > 0 ? inv.summary.quantity : null,
+      units,
       price: h ? h.marketPrice : null,
       // Wall St values are US$ only; ASX values are A$ (falls back to the summary value for holdings with no valuation).
       value: h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null,
-      marketPrice: h?.currentMarketPrice ?? null,
-      marketValue: h?.currentMarketValue ?? null,
-      unrealisedGainLoss: h?.unrealisedGainLoss ?? null,
+      marketPrice,
+      marketValue,
+      unrealisedGainLoss,
     };
   });
   const sum = (pick: (r: (typeof rows)[number]) => number | null) => rows.reduce((s, r) => s + (pick(r) ?? 0), 0);
