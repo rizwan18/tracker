@@ -50,6 +50,30 @@ export function defaultEntryDate(financialYearId: string): string {
   return today >= start && today <= end ? today : end;
 }
 
+/** Currency amount using the security's own currency code (falls back to plain AUD formatting if none is given). */
+export function formatCurrencyIn(amount: number, currencyCode?: string | null): string {
+  if (!currencyCode) return formatCurrency(amount);
+  try {
+    return new Intl.NumberFormat("en-AU", { style: "currency", currency: currencyCode, maximumFractionDigits: 2 }).format(amount);
+  } catch {
+    // Unrecognised/unsupported currency code from a provider — show the code alongside a plain number instead of throwing.
+    return `${currencyCode} ${amount.toFixed(2)}`;
+  }
+}
+
+/** e.g. "25 Sep 2026, 4:10 pm AEST" — for a provider-supplied price timestamp. */
+export function formatDateTime(dateInput: string | Date): string {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+}
+
 /** 51824753556 → "51 824 753 556" (anything that isn't 11 digits is returned unchanged). */
 export function formatAbn(abn: string | null | undefined): string {
   const d = (abn ?? "").replace(/\s+/g, "");

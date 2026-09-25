@@ -61,6 +61,9 @@ export default function InvestmentsPage() {
             <Link to="/import-export?section=investments">
               <Button variant="secondary">Import / Export</Button>
             </Link>
+            <Link to="/investments/price-lookup">
+              <Button variant="secondary">Check Security Price</Button>
+            </Link>
             <Button onClick={() => setShowForm(true)}>+ Add investment</Button>
           </div>
         }

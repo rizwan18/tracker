@@ -351,6 +351,19 @@ export interface ImportResult {
   added: Record<string, number> | null;
 }
 
+/** Response shape of GET /api/market-data/price — see backend/src/lib/marketData.ts */
+export interface LatestPrice {
+  ticker: string;
+  price: number;
+  currency: string | null;
+  exchange: string | null;
+  timestamp: string | null;
+  previousClose: number | null;
+  marketState: string | null;
+  isStale: boolean;
+  cached?: boolean;
+}
+
 export type PortfolioType = "PERSONAL" | "COMPANY" | "TRUST" | "OTHER";
 
 export interface Portfolio {
