@@ -6,7 +6,6 @@ import { Button, Card, EmptyState, SectionHeading, HelpText } from "../component
 import { Modal } from "../components/Modal";
 import { InvestmentForm } from "../components/InvestmentForm";
 import { HoldingsTable } from "../components/HoldingsTable";
-import { StakeImportModalBody } from "../components/StakeImportModal";
 import { isStock, marketOf } from "../lib/holdings";
 import { formatCurrency, formatCurrencySigned } from "../lib/format";
 
@@ -28,7 +27,6 @@ export default function InvestmentsPage() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -53,19 +51,16 @@ export default function InvestmentsPage() {
   return (
     <div className="space-y-6">
       <SectionHeading
-        title="Shares, ETFs & other investments"
+        title="Investments"
         subtitle="Track holdings, dividends, and gains — all figures are estimates based on what you enter."
         action={
           <div className="flex flex-wrap gap-2">
             <Link to="/investments/realised">
-              <Button variant="secondary">View realised transactions</Button>
+              <Button variant="secondary">View Trades</Button>
             </Link>
             <Link to="/import-export?section=investments">
               <Button variant="secondary">Import / Export</Button>
             </Link>
-            <Button variant="secondary" onClick={() => setShowImport(true)}>
-              Import from Stake
-            </Button>
             <Button onClick={() => setShowForm(true)}>+ Add investment</Button>
           </div>
         }
@@ -106,7 +101,7 @@ export default function InvestmentsPage() {
         <div className="space-y-8">
           {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} />}
           {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} />}
-          {stocks.length > 0 && latestStatement === undefined && <p className="text-xs text-[var(--color-ink-soft)]">Units and prices come from what you record on each holding — or import a Stake report to fill them in.</p>}
+          {stocks.length > 0 && latestStatement === undefined && <p className="text-xs text-[var(--color-ink-soft)]">Units and prices come from what you record on each holding.</p>}
 
           {others.length > 0 && (
             <section>
@@ -136,17 +131,6 @@ export default function InvestmentsPage() {
             </section>
           )}
         </div>
-      )}
-
-      {showImport && (
-        <Modal title="Import from Stake" onClose={() => setShowImport(false)}>
-          <StakeImportModalBody
-            onCancel={() => setShowImport(false)}
-            onDone={() => {
-              load();
-            }}
-          />
-        </Modal>
       )}
 
       {showForm && (
