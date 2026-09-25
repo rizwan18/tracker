@@ -20,6 +20,14 @@ interface DisposalRow {
   investmentId: string;
   investmentName: string;
   ticker: string | null;
+  /**
+   * Best-available acquisition date. For manual disposals this is the
+   * recorded purchase date. For automatic disposals (average-cost method)
+   * this is the date of the earliest parcel still held at the time of sale
+   * — not a FIFO-matched date, since this app pools parcels by average
+   * cost rather than tracking them individually.
+   */
+  acquisitionDate: Date | null;
   saleDate: Date;
   quantity: number;
   salePrice: number;
@@ -81,6 +89,7 @@ router.get(
               investmentId: inv.id,
               investmentName: inv.name,
               ticker: inv.ticker,
+              acquisitionDate: earliestBuy ?? null,
               saleDate: tx.date,
               quantity: tx.quantity,
               salePrice: tx.pricePerUnit,
@@ -114,6 +123,7 @@ router.get(
       investmentId: d.investmentId,
       investmentName: d.investment.name,
       ticker: d.investment.ticker,
+      acquisitionDate: d.purchaseDate,
       saleDate: d.saleDate,
       quantity: d.quantity,
       salePrice: d.salePrice,

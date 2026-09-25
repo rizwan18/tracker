@@ -292,6 +292,7 @@ export interface CapitalGainDisposal {
   investmentId: string;
   investmentName: string;
   ticker: string | null;
+  acquisitionDate: string | null;
   saleDate: string;
   quantity: number;
   salePrice: number;

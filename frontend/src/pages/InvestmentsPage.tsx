@@ -57,6 +57,9 @@ export default function InvestmentsPage() {
         subtitle="Track holdings, dividends, and gains — all figures are estimates based on what you enter."
         action={
           <div className="flex flex-wrap gap-2">
+            <Link to="/investments/realised">
+              <Button variant="secondary">View realised transactions</Button>
+            </Link>
             <Link to="/import-export?section=investments">
               <Button variant="secondary">Import / Export</Button>
             </Link>

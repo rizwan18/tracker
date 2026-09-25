@@ -23,6 +23,7 @@ import PropertiesPage from "./pages/PropertiesPage";
 import PropertyDetailPage from "./pages/PropertyDetailPage";
 import InvestmentsPage from "./pages/InvestmentsPage";
 import InvestmentDetailPage from "./pages/InvestmentDetailPage";
+import RealisedTransactionsPage from "./pages/RealisedTransactionsPage";
 import BillsPage from "./pages/BillsPage";
 import RemindersPage from "./pages/RemindersPage";
 import ReportsPage from "./pages/ReportsPage";
@@ -72,6 +73,7 @@ export default function App() {
               <Route path="/properties" element={<PropertiesPage />} />
               <Route path="/properties/:id" element={<PropertyDetailPage />} />
               <Route path="/investments" element={<InvestmentsPage />} />
+              <Route path="/investments/realised" element={<RealisedTransactionsPage />} />
               <Route path="/investments/:id" element={<InvestmentDetailPage />} />
               <Route path="/bills" element={<BillsPage />} />
               <Route path="/reminders" element={<RemindersPage />} />

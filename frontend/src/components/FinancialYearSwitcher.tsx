@@ -3,7 +3,7 @@ import { useFinancialYear } from "../context/FinancialYearContext";
 import { api } from "../api/client";
 import type { FinancialYearOption } from "../api/types";
 
-function labelFromId(id: string): string {
+export function labelFromId(id: string): string {
   const [start] = id.split("-");
   const startYear = Number(start);
   const endShort = String((startYear + 1) % 100).padStart(2, "0");
