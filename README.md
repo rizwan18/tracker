@@ -39,7 +39,8 @@ revenue-expense-tracker/
 - `src/lib/financialYear.ts` — the Australian financial-year engine (1 Jul–30 Jun), timezone-aware, leap-year-safe, fully unit tested. Every other calculation in the app depends on this being correct.
 - `src/lib/billRecurrence.ts` — pure date-advancement logic for recurring bills, also unit tested.
 - `src/services/calculations.ts` — the single source of truth for every total shown anywhere in the app (dashboard, reports, tax summary). Nothing else computes totals independently, so numbers can't drift between screens.
-- `src/routes/*` — one file per resource (auth, transactions, properties, investments, dividends, capital gains, bills, reminders, dashboard, reports, search, documents).
+- `src/routes/*` — one file per resource (auth, transactions, properties, investments, dividends, capital gains, bills, reminders, dashboard, reports, search, documents, market data).
+- `src/lib/marketData.ts` — isolated integration with the external stock-price provider, used by `src/routes/marketData.ts`. See "Stock price API" below.
 - `prisma/schema.prisma` — the full relational data model.
 
 **Frontend** (`frontend/`)
@@ -139,13 +140,36 @@ Individual servers: `npm run dev:backend` and `npm run dev:frontend`.
 
 Document uploads always go to Vercel Blob (even in local dev) — set `BLOB_READ_WRITE_TOKEN` in `backend/.env` if you want to test that flow locally.
 
+## Stock price API
+
+`GET /api/market-data/price?ticker=BHP.AX` returns the latest available market price for a security/ticker. Like every other route, it requires the same bearer-token auth as the rest of the API (`Authorization: Bearer <token>`).
+
+**Provider**: Yahoo Finance's free, unofficial "chart" endpoint — no API key or signup required. It supports ASX tickers with the `.AX` suffix (`BHP.AX`, `CBA.AX`, `CSL.AX`, ...) as well as US tickers (`AAPL`, `MSFT`) and most other Yahoo Finance markets, which lines up with the free-text `ticker` field already stored on `Investment`. The integration is isolated in `src/lib/marketData.ts` behind `getLatestPrice(ticker)`, so it can be swapped for a registered, key-based provider later (Alpha Vantage, Twelve Data, Finnhub, IEX Cloud, ...) without touching the route. It's called server-side only — the endpoint sends no CORS headers, and keeping it server-side means no credentials are ever exposed to the frontend. Results are cached in-process for 30 seconds to reduce duplicate calls against the provider's rate limits.
+
+Success response (`200`):
+```json
+{
+  "ticker": "BHP.AX",
+  "price": 42.15,
+  "currency": "AUD",
+  "exchange": "ASX",
+  "timestamp": "2026-09-25T07:20:00.000Z",
+  "previousClose": 41.80,
+  "marketState": "REGULAR",
+  "isStale": false
+}
+```
+`isStale: true` means the market is currently closed and this is the last available price, rather than a live one. Error responses use `{ "error": "<message>" }` with an appropriate status (400 for an invalid/missing ticker, 404 if the security isn't found, 429/502/504 for provider rate-limiting/outage/timeout) — full details are logged server-side only, never sent to the client.
+
+This is a read-only lookup and isn't wired into `Investment` valuations yet; holdings still use manually entered or imported prices (see `src/services/holdings.ts`).
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Current coverage focuses on the areas correctness matters most, all as dependency-free pure-function unit tests: the Australian financial-year engine (30 June/1 July boundary at the second, leap years, timezone handling, FY id parsing/formatting — 18 tests), bill recurrence date advancement (5 tests), and manual capital gains disposal math — cost base, proceeds, gain/loss, ownership-percentage splitting for joint ownership, and holding-period calculation (5 tests). 28 tests total. See `backend/src/tests/`.
+Current coverage focuses on the areas correctness matters most, all as dependency-free pure-function unit tests: the Australian financial-year engine (30 June/1 July boundary at the second, leap years, timezone handling, FY id parsing/formatting — 18 tests), bill recurrence date advancement (5 tests), manual capital gains disposal math — cost base, proceeds, gain/loss, ownership-percentage splitting for joint ownership, and holding-period calculation (5 tests) — and stock-ticker validation/normalisation for the market-data API (3 tests). 31 tests total. See `backend/src/tests/`.
 **Recommended next testing steps** (not yet included, to keep this build focused): integration tests against a real database (Vitest + a test Postgres/SQLite instance), React Testing Library component tests, and Playwright end-to-end tests covering the full "create account → add property → generate report" flow from section 33 of the product brief.
 
 ## Deploying to Vercel
