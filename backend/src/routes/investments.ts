@@ -2,11 +2,8 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
-import multer from "multer";
 import { investmentSchema, investmentTransactionSchema, investmentValuationSchema } from "../lib/validation";
 import { computeWeightings, currentValueOf, valueHolding, type LatestValuation } from "../services/holdings";
-import { parseStakeReport, StakeParseError } from "../services/stake/parseStakeReport";
-import { planStakeImport, type StakePlan } from "../services/stake/planStakeImport";
 
 const router = Router();
 router.use(requireAuth);
@@ -116,92 +113,6 @@ router.post(
     res.status(201).json(investment);
   })
 );
-
-// Import a Stake "Portfolio Valuation" report (.xlsx): preview first (dryRun), then apply.
-const stakeUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5_000_000, files: 1 } }).single("file");
-
-function receiveStakeUpload(req: AuthedRequest, res: Parameters<typeof stakeUpload>[1]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    stakeUpload(req, res, (err: unknown) => {
-      if (!err) return resolve();
-      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") return reject(new FriendlyError("That file is larger than 5 MB, which is too big for a Stake report.", 413));
-      reject(new FriendlyError("We couldn't read that upload. Please choose the Stake report (.xlsx).", 400));
-    });
-  });
-}
-
-router.post(
-  "/import/stake",
-  asyncHandler(async (req: AuthedRequest, res) => {
-    const householdId = householdOf(req);
-    await receiveStakeUpload(req, res);
-    if (!req.file) throw new FriendlyError("Please choose the Stake report (.xlsx) to import.", 400);
-    const dryRun = req.body?.dryRun !== "false";
-    const zeroMissing = req.body?.zeroMissing !== "false";
-
-    let report;
-    try {
-      report = parseStakeReport(new Uint8Array(req.file.buffer));
-    } catch (err) {
-      if (err instanceof StakeParseError) throw new FriendlyError(err.message, 400);
-      throw err;
-    }
-    const asAt = new Date(`${report.statementDate}T00:00:00.000Z`);
-    if (asAt.getTime() > Date.now() + 2 * 24 * 60 * 60 * 1000) throw new FriendlyError("The statement date is in the future — please check the report.", 400);
-
-    const existing = await prisma.investment.findMany({ where: { householdId }, include: latestValuation });
-    const atDate = await prisma.investmentValuation.findMany({
-      where: { investment: { householdId }, asAt },
-      select: { investmentId: true, units: true, marketPrice: true, marketValueAud: true },
-    });
-    const plan = planStakeImport(
-      report,
-      existing.map((e) => ({ id: e.id, name: e.name, ticker: e.ticker, type: e.type, market: e.market, currency: e.currency, createdAt: e.createdAt, latest: e.valuations[0] ? { asAt: e.valuations[0].asAt, source: e.valuations[0].source } : null })),
-      atDate,
-      { zeroMissing }
-    );
-
-    const preview = {
-      report: { reportType: report.reportType, ownerName: report.ownerName, statementDate: report.statementDate, generatedOn: report.generatedOn, defaultCurrency: report.defaultCurrency },
-      warnings: [...report.warnings, ...plan.warnings],
-      holdings: plan.rows.map((r) => ({ ...r.holding, action: r.action, existingName: r.existingName, investmentType: r.investmentType })),
-      missing: plan.missing,
-      counts: plan.counts,
-    };
-    if (dryRun) return res.json({ dryRun: true, ...preview });
-
-    await applyStakePlan(householdId, plan, asAt, zeroMissing);
-    res.json({ dryRun: false, ...preview });
-  })
-);
-
-async function applyStakePlan(householdId: string, plan: StakePlan, asAt: Date, zeroMissing: boolean) {
-  await prisma.$transaction(
-    async (tx) => {
-      for (const row of plan.rows) {
-        if (row.action === "unchanged") continue;
-        const h = row.holding;
-        let investmentId = row.investmentId;
-        if (!investmentId) {
-          const created = await tx.investment.create({ data: { householdId, name: h.name, ticker: h.symbol, type: row.investmentType, market: h.market, currency: h.currency } });
-          investmentId = created.id;
-        } else {
-          // Older records don't know their market — fill it in now that we do.
-          await tx.investment.updateMany({ where: { id: investmentId, householdId, market: null }, data: { market: h.market, currency: h.currency } });
-        }
-        const values = { units: h.units, marketPrice: h.marketPrice, marketValue: h.marketValue, marketValueAud: h.marketValueAud, currency: h.currency, source: "STAKE" };
-        await tx.investmentValuation.upsert({ where: { investmentId_asAt: { investmentId, asAt } }, create: { investmentId, asAt, ...values }, update: values });
-      }
-      if (zeroMissing) {
-        for (const m of plan.missing) {
-          const zero = { units: 0, marketPrice: 0, marketValue: 0, marketValueAud: 0, currency: m.currency, source: "STAKE" };
-          await tx.investmentValuation.upsert({ where: { investmentId_asAt: { investmentId: m.investmentId, asAt } }, create: { investmentId: m.investmentId, asAt, ...zero }, update: zero });
-        }
-      }
-    },
-    { timeout: 20000 }
-  );
-}
 
 router.get(
   "/:id",
