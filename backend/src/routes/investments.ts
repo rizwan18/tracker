@@ -2,8 +2,8 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
-import { investmentSchema, investmentTransactionSchema, investmentValuationSchema } from "../lib/validation";
-import { computeWeightings, currentValueOf, valueHolding, type LatestValuation } from "../services/holdings";
+import { investmentSchema, investmentTransactionSchema, investmentValuationSchema, investmentInitialTransactionSchema } from "../lib/validation";
+import { computeWeightings, computeHoldingSummary, currentValueOf, valueHolding, type LatestValuation } from "../services/holdings";
 
 const router = Router();
 router.use(requireAuth);
@@ -14,39 +14,6 @@ function householdOf(req: AuthedRequest): string {
 }
 
 type ValuationRow = LatestValuation;
-
-/** Computes quantity held, average cost base, and unrealised gain/loss for one investment. */
-function computeHoldingSummary(txs: { type: string; quantity: number; pricePerUnit: number; brokerage: number; date: Date }[], currentValueOverride: number | null, valuation: ValuationRow | null = null) {
-  let quantity = 0;
-  let costBase = 0;
-  let realisedGain = 0;
-  let realisedLoss = 0;
-
-  const sorted = [...txs].sort((a, b) => a.date.getTime() - b.date.getTime());
-  for (const tx of sorted) {
-    if (tx.type === "BUY") {
-      quantity += tx.quantity;
-      costBase += tx.quantity * tx.pricePerUnit + tx.brokerage;
-    } else {
-      const avgCost = quantity > 0 ? costBase / quantity : 0;
-      const costOfSold = avgCost * tx.quantity;
-      const proceeds = tx.quantity * tx.pricePerUnit - tx.brokerage;
-      const gainLoss = proceeds - costOfSold;
-      if (gainLoss >= 0) realisedGain += gainLoss;
-      else realisedLoss += -gainLoss;
-      quantity -= tx.quantity;
-      costBase -= costOfSold;
-    }
-  }
-
-  const lastPrice = sorted[sorted.length - 1]?.pricePerUnit ?? 0;
-  const currentValue = currentValueOf({ valuation, override: currentValueOverride, quantity, lastPrice });
-  // A holding imported from a statement has no purchase history, so there's no cost to compare against.
-  const costBaseKnown = txs.length > 0;
-  const unrealisedGainLoss = costBaseKnown ? currentValue - costBase : 0;
-
-  return { quantity: valuation ? valuation.units : quantity, costBase, costBaseKnown, currentValue, unrealisedGainLoss, realisedGain, realisedLoss };
-}
 
 const latestValuation = { valuations: { orderBy: { asAt: "desc" as const }, take: 1 } };
 const latestValuation2 = { valuations: { orderBy: { asAt: "desc" as const }, take: 1, select: { marketValueAud: true } } };
@@ -99,16 +66,30 @@ router.post(
   "/",
   asyncHandler(async (req: AuthedRequest, res) => {
     const householdId = householdOf(req);
-    const { valuation, ...data } = investmentSchema.extend({ valuation: investmentValuationSchema.optional().nullable() }).parse(req.body);
+    const { valuation, initialTransaction, ...data } = investmentSchema
+      .extend({ valuation: investmentValuationSchema.optional().nullable(), initialTransaction: investmentInitialTransactionSchema.optional().nullable() })
+      .parse(req.body);
     const values = valuation ? valueHolding(valuation.units, valuation.marketPrice, data.currency, valuation.fxRate ?? null) : null;
-    const investment = await prisma.investment.create({
-      data: {
-        householdId,
-        ...data,
-        ...(valuation && values
-          ? { valuations: { create: { asAt: valuation.asAt, units: valuation.units, marketPrice: valuation.marketPrice, marketValue: values.marketValue, marketValueAud: values.marketValueAud, currency: data.currency, source: "MANUAL" } } }
-          : {}),
-      },
+    const investment = await prisma.$transaction(async (tx) => {
+      const created = await tx.investment.create({
+        data: {
+          householdId,
+          ...data,
+          ...(valuation && values
+            ? { valuations: { create: { asAt: valuation.asAt, units: valuation.units, marketPrice: valuation.marketPrice, marketValue: values.marketValue, marketValueAud: values.marketValueAud, currency: data.currency, source: "MANUAL" } } }
+            : {}),
+        },
+      });
+      // The units/price/date/brokerage entered as the initial purchase become this holding's first
+      // BUY transaction — the same record type "Add a buy/sell transaction" creates — so brokerage
+      // fees are incorporated into cost base via the app's existing calculation (computeHoldingSummary),
+      // with no separate/new methodology.
+      if (initialTransaction) {
+        await tx.investmentTransaction.create({
+          data: { investmentId: created.id, type: "BUY", date: initialTransaction.date, quantity: initialTransaction.quantity, pricePerUnit: initialTransaction.pricePerUnit, brokerage: initialTransaction.brokerage ?? 0 },
+        });
+      }
+      return created;
     });
     res.status(201).json(investment);
   })

@@ -36,3 +36,45 @@ export function valueHolding(units: number, marketPrice: number, currency: strin
   if (currency !== "USD" || !fxRate || fxRate <= 0) return { marketValue, marketValueAud: marketValue };
   return { marketValue, marketValueAud: round2(marketValue * fxRate) };
 }
+
+/**
+ * Computes quantity held, average cost base, and unrealised gain/loss for one investment from its
+ * buy/sell history. Brokerage is added to a buy's cost and deducted from a sell's proceeds — the
+ * only place brokerage fees affect the app's figures, however they were recorded (via "Add an
+ * investment"'s initial purchase or "Add a buy/sell transaction").
+ */
+export function computeHoldingSummary(
+  txs: { type: string; quantity: number; pricePerUnit: number; brokerage: number; date: Date }[],
+  currentValueOverride: number | null,
+  valuation: LatestValuation | null = null,
+) {
+  let quantity = 0;
+  let costBase = 0;
+  let realisedGain = 0;
+  let realisedLoss = 0;
+
+  const sorted = [...txs].sort((a, b) => a.date.getTime() - b.date.getTime());
+  for (const tx of sorted) {
+    if (tx.type === "BUY") {
+      quantity += tx.quantity;
+      costBase += tx.quantity * tx.pricePerUnit + tx.brokerage;
+    } else {
+      const avgCost = quantity > 0 ? costBase / quantity : 0;
+      const costOfSold = avgCost * tx.quantity;
+      const proceeds = tx.quantity * tx.pricePerUnit - tx.brokerage;
+      const gainLoss = proceeds - costOfSold;
+      if (gainLoss >= 0) realisedGain += gainLoss;
+      else realisedLoss += -gainLoss;
+      quantity -= tx.quantity;
+      costBase -= costOfSold;
+    }
+  }
+
+  const lastPrice = sorted[sorted.length - 1]?.pricePerUnit ?? 0;
+  const currentValue = currentValueOf({ valuation, override: currentValueOverride, quantity, lastPrice });
+  // A holding imported from a statement has no purchase history, so there's no cost to compare against.
+  const costBaseKnown = txs.length > 0;
+  const unrealisedGainLoss = costBaseKnown ? currentValue - costBase : 0;
+
+  return { quantity: valuation ? valuation.units : quantity, costBase, costBaseKnown, currentValue, unrealisedGainLoss, realisedGain, realisedLoss };
+}

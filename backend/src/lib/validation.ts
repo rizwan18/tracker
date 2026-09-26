@@ -88,6 +88,14 @@ export const investmentTransactionSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+/**
+ * The initial buy recorded from the "Add an investment" form (Units + Purchase Price + Purchase
+ * Date + Brokerage fees). Reuses investmentTransactionSchema's own field rules so this initial buy
+ * is validated exactly like any other buy/sell transaction — it's always a BUY, so `type`/`notes`
+ * aren't collected here.
+ */
+export const investmentInitialTransactionSchema = investmentTransactionSchema.omit({ type: true, notes: true });
+
 export const dividendSchema = z.object({
   investmentId: z.string().min(1),
   exDividendDate: z.coerce.date().optional().nullable(),

@@ -22,7 +22,9 @@ const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[$,\s]/g,
 
 /**
  * Add an investment. Shares, ETFs and LICs are entered the way a Stake report lists them
- * (Symbol, Name, market, Units, Purchase Price, Purchase Value, plus read-only Market Price / Value / Unrealised Gain/Loss); everything else keeps the simple form.
+ * (Symbol, Name, market, Units, Purchase Price, Purchase Date, Brokerage fees); everything else keeps the simple form.
+ * When units + purchase price are given, this also records the initial buy (see handleSubmit) so
+ * brokerage fees are incorporated into cost base the same way any other buy/sell transaction is.
  */
 export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const [type, setType] = useState("SHARE");
@@ -31,6 +33,7 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
   const [market, setMarket] = useState<"ASX" | "WALL_ST">("ASX");
   const [units, setUnits] = useState("");
   const [price, setPrice] = useState("");
+  const [brokerage, setBrokerage] = useState("");
   const [asAt, setAsAt] = useState(toInputDate(new Date()));
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -58,9 +61,21 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
       body.currency = currency;
       const u = num(units);
       const p = num(price);
+      const b = num(brokerage);
+      if (b !== null && Number.isNaN(b)) return setError("Please enter brokerage fees as a number.");
+      if (b !== null && b < 0) return setError("Brokerage fees can't be negative.");
       if (u !== null || p !== null) {
         if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p) || u < 0 || p < 0) return setError("Please enter the units and the purchase price as numbers.");
         body.valuation = { asAt, units: u, marketPrice: p };
+        // Only a genuine purchase (units and price both greater than zero) can become a buy
+        // transaction — otherwise brokerage would have nothing to attach its cost base to.
+        if (u > 0 && p > 0) {
+          body.initialTransaction = { date: asAt, quantity: u, pricePerUnit: p, brokerage: b ?? 0 };
+        } else if (b !== null && b > 0) {
+          return setError("Please enter units and a purchase price greater than zero to record brokerage fees.");
+        }
+      } else if (b !== null && b > 0) {
+        return setError("Please enter units and a purchase price to record brokerage fees.");
       }
     }
     setSaving(true);
@@ -116,19 +131,13 @@ export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onC
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label={isUs ? "Market Price (US$)" : "Market Price"} htmlFor="inv-mkt-price" hint="Read-only">
-              <input id="inv-mkt-price" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
+            <Field label="Purchase Date" htmlFor="inv-asat" hint="The date you acquired this investment.">
+              <input id="inv-asat" type="date" className={inputClass} value={asAt} onChange={(e) => setAsAt(e.target.value)} />
             </Field>
-            <Field label={isUs ? "Market Value (US$)" : "Market Value"} htmlFor="inv-mkt-value" hint="Read-only">
-              <input id="inv-mkt-value" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
+            <Field label={isUs ? "Brokerage fees (US$)" : "Brokerage fees"} htmlFor="inv-brokerage" hint="Optional — included in your cost base.">
+              <input id="inv-brokerage" inputMode="decimal" className={inputClass} value={brokerage} onChange={(e) => setBrokerage(e.target.value)} placeholder="0.00" />
             </Field>
           </div>
-          <Field label="Unrealised Gain/Loss" htmlFor="inv-gain-loss" hint="Read-only">
-            <input id="inv-gain-loss" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
-          </Field>
-          <Field label="Price as at" htmlFor="inv-asat" hint="The date of the purchase price.">
-            <input id="inv-asat" type="date" className={inputClass} value={asAt} onChange={(e) => setAsAt(e.target.value)} />
-          </Field>
           {purchaseValue !== null && (
             <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">
               Purchase Value: <span className="font-medium">{isUs ? formatUsd(purchaseValue) : formatMoney(purchaseValue)}</span>

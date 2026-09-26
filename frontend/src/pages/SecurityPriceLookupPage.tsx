@@ -57,7 +57,7 @@ export default function SecurityPriceLookupPage() {
         subtitle="Look up the latest available market price for a share, ETF or other listed security."
         action={
           <Link to="/investments">
-            <Button variant="secondary">Back to Investments</Button>
+            <Button variant="secondary">Back to Shares and ETFs</Button>
           </Link>
         }
       />

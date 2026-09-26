@@ -20,7 +20,7 @@ const COPY = {
     title: "Shares, ETFs & Other Investments",
     what: "investment portfolio",
     text: "Export your shares, ETFs and other investments to a CSV file, or import them from a CSV you exported here. It includes each holding's type, market, units and prices, buys and sells, dividends and capital gains disposals.",
-    footnote: "To bring in a Stake statement (.xlsx), use “Import from Stake” on the Investments page.",
+    footnote: "To bring in a Stake statement (.xlsx), use “Import from Stake” on the Shares and ETFs page.",
     exportLabel: "Export investment portfolio CSV",
     importLabel: "Import investment portfolio CSV",
     viewTo: "/investments",

@@ -54,7 +54,7 @@ export default function InvestmentsPage() {
   return (
     <div className="space-y-6">
       <SectionHeading
-        title="Investments"
+        title="Shares and ETFs"
         subtitle="Track holdings, dividends, and gains — all figures are estimates based on what you enter."
         action={
           <div className="flex flex-wrap gap-2">

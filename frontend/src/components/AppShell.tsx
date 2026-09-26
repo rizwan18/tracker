@@ -8,7 +8,7 @@ const PRIMARY_NAV = [
   { to: "/", label: "Dashboard", icon: "🏠", end: true },
   { to: "/money", label: "Money", icon: "💷" },
   { to: "/properties", label: "Properties", icon: "🏘" },
-  { to: "/investments", label: "Investments", icon: "📈" },
+  { to: "/investments", label: "Shares and ETFs", icon: "📈" },
   { to: "/bills", label: "Bills", icon: "🧾" },
   { to: "/reminders", label: "Reminders", icon: "🔔" },
   { to: "/reports", label: "Reports", icon: "📊" },
@@ -26,7 +26,7 @@ const COMPANY_NAV = [
   { to: "/business/accounts", label: "Accounts", icon: "📒" },
   { to: "/business/journal", label: "Journal", icon: "✍️" },
   { to: "/properties", label: "Properties", icon: "🏘" },
-  { to: "/investments", label: "Investments", icon: "📈" },
+  { to: "/investments", label: "Shares and ETFs", icon: "📈" },
   { to: "/import-export", label: "Import / Export", icon: "📥" },
   { to: "/data", label: "Your data", icon: "💾" },
   { to: "/settings", label: "Settings", icon: "⚙️" },
@@ -44,7 +44,7 @@ const COMPANY_MOBILE_NAV = [
 const MOBILE_NAV = [
   { to: "/", label: "Home", icon: "🏠", end: true },
   { to: "/money", label: "Money", icon: "💷" },
-  { to: "/investments", label: "Invest", icon: "📈" },
+  { to: "/investments", label: "Shares", icon: "📈" },
   { to: "/reminders", label: "Remind", icon: "🔔" },
   { to: "/settings", label: "More", icon: "⚙️" },
 ];
