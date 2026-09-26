@@ -26,8 +26,8 @@ const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[$,\s]/g,
  * When units + purchase price are given, this also records the initial buy (see handleSubmit) so
  * brokerage fees are incorporated into cost base the same way any other buy/sell transaction is.
  */
-export function InvestmentForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
-  const [type, setType] = useState("SHARE");
+export function InvestmentForm({ onSaved, onCancel, defaultType = "SHARE" }: { onSaved: () => void; onCancel: () => void; defaultType?: string }) {
+  const [type, setType] = useState(defaultType);
   const [name, setName] = useState("");
   const [ticker, setTicker] = useState("");
   const [market, setMarket] = useState<"ASX" | "WALL_ST">("ASX");

@@ -48,7 +48,9 @@ export default function InvestmentsPage() {
   const stocks = investments.filter(isStock);
   const asxStocks = stocks.filter((i) => marketOf(i) === "ASX");
   const usStocks = stocks.filter((i) => marketOf(i) === "WALL_ST");
-  const others = investments.filter((i) => !isStock(i));
+  // Crypto, managed funds and term deposits have their own page now (see
+  // CryptoManagedFundsPage.tsx) — everything else non-stock still lands here.
+  const others = investments.filter((i) => !isStock(i) && !["CRYPTO", "MANAGED_FUND", "TERM_DEPOSIT"].includes(i.type));
   const latestStatement = stocks.map((i) => i.holding?.asAt).filter(Boolean).sort().at(-1);
 
   return (

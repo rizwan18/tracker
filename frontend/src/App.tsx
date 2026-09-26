@@ -22,6 +22,7 @@ import MoneyPage from "./pages/MoneyPage";
 import PropertiesPage from "./pages/PropertiesPage";
 import PropertyDetailPage from "./pages/PropertyDetailPage";
 import InvestmentsPage from "./pages/InvestmentsPage";
+import CryptoManagedFundsPage from "./pages/CryptoManagedFundsPage";
 import InvestmentDetailPage from "./pages/InvestmentDetailPage";
 import SecurityPriceLookupPage from "./pages/SecurityPriceLookupPage";
 import RealisedTransactionsPage from "./pages/RealisedTransactionsPage";
@@ -74,6 +75,7 @@ export default function App() {
               <Route path="/properties" element={<PropertiesPage />} />
               <Route path="/properties/:id" element={<PropertyDetailPage />} />
               <Route path="/investments" element={<InvestmentsPage />} />
+              <Route path="/crypto-managed-funds" element={<CryptoManagedFundsPage />} />
               <Route path="/investments/realised" element={<RealisedTransactionsPage />} />
               <Route path="/investments/price-lookup" element={<SecurityPriceLookupPage />} />
               <Route path="/investments/:id" element={<InvestmentDetailPage />} />
