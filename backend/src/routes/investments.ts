@@ -136,13 +136,32 @@ router.put(
     const householdId = householdOf(req);
     const investment = await prisma.investment.findFirst({ where: { id: req.params.id, householdId } });
     if (!investment) throw new FriendlyError("We couldn't find this investment.", 404);
-    const data = investmentValuationSchema.parse(req.body);
+    const { brokerage, ...data } = investmentValuationSchema.parse(req.body);
     const values = valueHolding(data.units, data.marketPrice, investment.currency, data.fxRate ?? null);
     const fields = { units: data.units, marketPrice: data.marketPrice, marketValue: values.marketValue, marketValueAud: values.marketValueAud, currency: investment.currency, source: "MANUAL" };
-    const saved = await prisma.investmentValuation.upsert({
-      where: { investmentId_asAt: { investmentId: investment.id, asAt: data.asAt } },
-      create: { investmentId: investment.id, asAt: data.asAt, ...fields },
-      update: fields,
+    const saved = await prisma.$transaction(async (tx) => {
+      const valuation = await tx.investmentValuation.upsert({
+        where: { investmentId_asAt: { investmentId: investment.id, asAt: data.asAt } },
+        create: { investmentId: investment.id, asAt: data.asAt, ...fields },
+        update: fields,
+      });
+      // The Update Holding form doubles as "record the opening purchase" for investments that
+      // don't get bought/sold through the transactions form (crypto, managed funds, term deposits,
+      // and a stock's very first purchase). So that brokerage actually reaches the cost base and
+      // unrealised gain/loss (computeHoldingSummary reads investmentTransactions, never valuations),
+      // keep a single opening BUY transaction in sync with what's entered here. If more than one
+      // transaction already exists, the holding has its own trade history — leave it alone rather
+      // than guess which one to overwrite; use "Add a buy/sell transaction" for those instead.
+      if (brokerage !== undefined && data.units > 0 && data.marketPrice > 0) {
+        const existing = await tx.investmentTransaction.findMany({ where: { investmentId: investment.id }, orderBy: { date: "asc" } });
+        const openingFields = { type: "BUY" as const, date: data.asAt, quantity: data.units, pricePerUnit: data.marketPrice, brokerage };
+        if (existing.length === 0) {
+          await tx.investmentTransaction.create({ data: { investmentId: investment.id, ...openingFields } });
+        } else if (existing.length === 1 && existing[0].type === "BUY") {
+          await tx.investmentTransaction.update({ where: { id: existing[0].id }, data: openingFields });
+        }
+      }
+      return valuation;
     });
     res.json(saved);
   })

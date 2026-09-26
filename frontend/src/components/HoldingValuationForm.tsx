@@ -9,9 +9,10 @@ const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[$,\s]/g,
 
 /**
  * Record how many units you hold, what you paid, and when — the same information "Add an investment"
- * collects for shares. Brokerage is only added to the cost base the first time a holding is set up
- * (mirroring InvestmentForm's initialTransaction), so editing an existing holding later doesn't
- * double up on brokerage already recorded via a buy/sell transaction.
+ * collects for shares. Brokerage is kept in sync with this holding's single opening BUY transaction
+ * on the backend (see PUT /investments/:id/valuation), so it flows into cost base and unrealised
+ * gain/loss like any other purchase — unless the investment already has more than one transaction
+ * of its own, in which case the backend leaves that trade history alone.
  */
 export function HoldingValuationForm({ investment, onSaved, onCancel }: { investment: Investment; onSaved: () => void; onCancel: () => void }) {
   const isUs = investment.currency === "USD";
@@ -37,12 +38,7 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
     if (b !== null && b > 0 && (u === 0 || p === 0)) return setError("Please enter units and a purchase price greater than zero to record brokerage fees.");
     setSaving(true);
     try {
-      await api.put(`/investments/${investment.id}/valuation`, { asAt, units: u, marketPrice: p });
-      // Only a first-time holding becomes a buy transaction — otherwise this brokerage would be
-      // added on top of whatever's already in the cost base from an earlier save or trade.
-      if (!h && u > 0 && p > 0) {
-        await api.post(`/investments/${investment.id}/transactions`, { type: "BUY", date: asAt, quantity: u, pricePerUnit: p, brokerage: b ?? 0 });
-      }
+      await api.put(`/investments/${investment.id}/valuation`, { asAt, units: u, marketPrice: p, brokerage: b ?? 0 });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "We couldn't save this. Please try again.");

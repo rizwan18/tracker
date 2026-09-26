@@ -77,6 +77,10 @@ export const investmentValuationSchema = z.object({
   marketPrice: z.coerce.number().min(0, "The price can't be negative.").max(1e9),
   /** Optional and no longer collected by the app (US holdings are shown in US$ only); still accepted from older clients. */
   fxRate: z.coerce.number().positive("The exchange rate must be more than zero.").max(100).optional().nullable(),
+  /** From the "Update holding" form. When present, kept in sync with this holding's opening BUY
+   * transaction (see the /valuation route) so brokerage is reflected in cost base and unrealised
+   * gain/loss, not just the units/price shown here. */
+  brokerage: z.coerce.number().min(0, "Brokerage fees can't be negative.").optional(),
 });
 
 export const investmentTransactionSchema = z.object({

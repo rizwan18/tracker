@@ -15,9 +15,13 @@ const gainLossCls = (n: number) => (n >= 0 ? "text-[var(--color-eucalyptus)]" : 
  * Wall St Equities are shown in US$ only (no A$ conversion).
  *
  * Market Price / Market Value come from `livePrices` (see useLiveHoldingPrices), fetched fresh on
- * every page load from the same market-data endpoint as the Check Security Price page. Unrealised
- * Gain/Loss = Market Value − Purchase Value, shown in green for a gain and red for a loss. A holding
- * is blank ("—") in these columns until its live price has loaded, or if no live price could be found.
+ * every page load from the same market-data endpoint as the Check Security Price page. Purchase
+ * Price/Value come from the investment's cost base (summary.costBase, which includes brokerage —
+ * see computeHoldingSummary on the backend) rather than the raw valuation, so brokerage entered via
+ * "Update holding" or "Add a buy/sell transaction" is reflected here. Unrealised Gain/Loss = Market
+ * Value − Purchase Value, shown in green for a gain and red for a loss. A holding falls back to its
+ * last recorded valuation for Purchase Price/Value if it has no buy history yet (cost base unknown),
+ * and is blank ("—") in the market columns until its live price has loaded, or if none was found.
  */
 export function HoldingsTable({ market, holdings, livePrices }: { market: "ASX" | "WALL_ST"; holdings: Investment[]; livePrices?: Record<string, LatestPrice> }) {
   const isUs = market === "WALL_ST";
@@ -25,8 +29,10 @@ export function HoldingsTable({ market, holdings, livePrices }: { market: "ASX" 
   const rows = holdings.map((inv) => {
     const h = inv.holding ?? null;
     const units = h ? h.units : inv.summary.quantity > 0 ? inv.summary.quantity : null;
+    const costBaseKnown = inv.summary.costBaseKnown !== false;
     // Wall St values are US$ only; ASX values are A$ (falls back to the summary value for holdings with no valuation).
-    const value = h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null;
+    const value = costBaseKnown ? inv.summary.costBase : h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null;
+    const price = costBaseKnown && units ? value! / units : h ? h.marketPrice : null;
     const live = livePrices?.[inv.id] ?? null;
     const marketPrice = live ? live.price : null;
     const marketValue = live && units !== null ? live.price * units : null;
@@ -35,7 +41,7 @@ export function HoldingsTable({ market, holdings, livePrices }: { market: "ASX" 
       inv,
       weighting: h ? h.weightingPercent : null,
       units,
-      price: h ? h.marketPrice : null,
+      price,
       value,
       marketPrice,
       marketValue,

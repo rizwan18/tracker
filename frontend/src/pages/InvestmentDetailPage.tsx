@@ -241,6 +241,14 @@ function HoldingCard({ investment, onUpdate }: { investment: Investment; onUpdat
   const h = investment.holding ?? null;
   const market = marketOf(investment);
   const isUs = market === "WALL_ST";
+  // Purchase Price/Value and Unrealised Gain/Loss come from the cost base (summary.costBase, which
+  // includes brokerage) rather than the raw valuation, so they match the Cost base / Unrealised
+  // gain/loss stat tiles shown just above this card.
+  const costBaseKnown = investment.summary.costBaseKnown !== false;
+  const units = h ? h.units : null;
+  const purchaseValue = costBaseKnown ? investment.summary.costBase : h ? h.marketValue : null;
+  const purchasePrice = costBaseKnown && units ? purchaseValue! / units : h ? h.marketPrice : null;
+  const unrealisedGainLoss = costBaseKnown ? investment.summary.unrealisedGainLoss : null;
   const cell = (label: string, value: string) => (
     <div>
       <dt className="text-xs text-[var(--color-ink-soft)]">{label}</dt>
@@ -265,11 +273,11 @@ function HoldingCard({ investment, onUpdate }: { investment: Investment; onUpdat
           {cell("Market", MARKET_TITLES[market])}
           {cell("Weighting", h ? formatPercent(h.weightingPercent) : "—")}
           {cell("Units", h ? formatUnits(h.units) : "—")}
-          {cell(isUs ? "Purchase Price (US$)" : "Purchase Price", h ? formatPrice(h.marketPrice, isUs ? "USD" : "AUD") : "—")}
-          {cell(isUs ? "Purchase Value (US$)" : "Purchase Value", h ? (isUs ? formatUsd(h.marketValue) : formatMoney(h.marketValue)) : "—")}
+          {cell(isUs ? "Purchase Price (US$)" : "Purchase Price", purchasePrice != null ? formatPrice(purchasePrice, isUs ? "USD" : "AUD") : "—")}
+          {cell(isUs ? "Purchase Value (US$)" : "Purchase Value", purchaseValue != null ? (isUs ? formatUsd(purchaseValue) : formatMoney(purchaseValue)) : "—")}
           {cell(isUs ? "Market Price (US$)" : "Market Price", h?.currentMarketPrice != null ? formatPrice(h.currentMarketPrice, isUs ? "USD" : "AUD") : "—")}
           {cell(isUs ? "Market Value (US$)" : "Market Value", h?.currentMarketValue != null ? (isUs ? formatUsd(h.currentMarketValue) : formatMoney(h.currentMarketValue)) : "—")}
-          {cell("Unrealised Gain/Loss", h?.unrealisedGainLoss != null ? (isUs ? formatUsd(h.unrealisedGainLoss) : formatMoney(h.unrealisedGainLoss)) : "—")}
+          {cell("Unrealised Gain/Loss", unrealisedGainLoss != null ? (isUs ? formatUsd(unrealisedGainLoss) : formatMoney(unrealisedGainLoss)) : "—")}
         </dl>
       </Card>
     </section>
