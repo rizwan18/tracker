@@ -7,27 +7,42 @@ import { formatMoney, toInputDate } from "../lib/format";
 
 const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[$,\s]/g, "")));
 
-/** Record how many units you hold and their price on a date — the values shown in the holdings table. */
+/**
+ * Record how many units you hold, what you paid, and when — the same information "Add an investment"
+ * collects for shares. Brokerage is only added to the cost base the first time a holding is set up
+ * (mirroring InvestmentForm's initialTransaction), so editing an existing holding later doesn't
+ * double up on brokerage already recorded via a buy/sell transaction.
+ */
 export function HoldingValuationForm({ investment, onSaved, onCancel }: { investment: Investment; onSaved: () => void; onCancel: () => void }) {
   const isUs = investment.currency === "USD";
   const h = investment.holding;
   const [asAt, setAsAt] = useState(toInputDate(new Date()));
   const [units, setUnits] = useState(h ? String(h.units) : "");
   const [price, setPrice] = useState(h ? String(h.marketPrice) : "");
+  const [brokerage, setBrokerage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const u = num(units);
   const p = num(price);
-  const own = u !== null && p !== null && !Number.isNaN(u) && !Number.isNaN(p) ? Math.round(u * p * 100) / 100 : null;
+  const b = num(brokerage);
+  const own = u !== null && p !== null && !Number.isNaN(u) && !Number.isNaN(p) ? Math.round((u * p + (b !== null && !Number.isNaN(b) ? b : 0)) * 100) / 100 : null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (u === null || p === null || Number.isNaN(u) || Number.isNaN(p) || u < 0 || p < 0) return setError("Please enter the units and the purchase price as numbers.");
+    if (b !== null && Number.isNaN(b)) return setError("Please enter brokerage fees as a number.");
+    if (b !== null && b < 0) return setError("Brokerage fees can't be negative.");
+    if (b !== null && b > 0 && (u === 0 || p === 0)) return setError("Please enter units and a purchase price greater than zero to record brokerage fees.");
     setSaving(true);
     try {
       await api.put(`/investments/${investment.id}/valuation`, { asAt, units: u, marketPrice: p });
+      // Only a first-time holding becomes a buy transaction — otherwise this brokerage would be
+      // added on top of whatever's already in the cost base from an earlier save or trade.
+      if (!h && u > 0 && p > 0) {
+        await api.post(`/investments/${investment.id}/transactions`, { type: "BUY", date: asAt, quantity: u, pricePerUnit: p, brokerage: b ?? 0 });
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "We couldn't save this. Please try again.");
@@ -39,9 +54,6 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
   return (
     <form onSubmit={submit} className="space-y-4">
       {error && <p role="alert" className="text-sm text-[var(--color-brick)] bg-[var(--color-brick-tint)] rounded-lg px-3 py-2">{error}</p>}
-      <Field label="As at" htmlFor="hv-asat">
-        <input id="hv-asat" type="date" className={inputClass} value={asAt} onChange={(e) => setAsAt(e.target.value)} />
-      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Units" htmlFor="hv-units">
           <input id="hv-units" inputMode="decimal" className={inputClass} value={units} onChange={(e) => setUnits(e.target.value)} />
@@ -51,16 +63,13 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label={isUs ? "Market Price (US$)" : "Market Price"} htmlFor="hv-mkt-price" hint="Read-only">
-          <input id="hv-mkt-price" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
+        <Field label="Purchase Date" htmlFor="hv-asat" hint="The date you acquired this investment.">
+          <input id="hv-asat" type="date" className={inputClass} value={asAt} onChange={(e) => setAsAt(e.target.value)} />
         </Field>
-        <Field label={isUs ? "Market Value (US$)" : "Market Value"} htmlFor="hv-mkt-value" hint="Read-only">
-          <input id="hv-mkt-value" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
+        <Field label={isUs ? "Brokerage fees (US$)" : "Brokerage fees"} htmlFor="hv-brokerage" hint="Optional — included in your cost base.">
+          <input id="hv-brokerage" inputMode="decimal" className={inputClass} value={brokerage} onChange={(e) => setBrokerage(e.target.value)} placeholder="0.00" />
         </Field>
       </div>
-      <Field label="Unrealised Gain/Loss" htmlFor="hv-gain-loss" hint="Read-only">
-        <input id="hv-gain-loss" className={inputClass} value="" placeholder="—" readOnly aria-readonly="true" tabIndex={-1} />
-      </Field>
       {own !== null && (
         <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">
           Purchase Value: <span className="font-medium">{isUs ? formatUsd(own) : formatMoney(own)}</span>
