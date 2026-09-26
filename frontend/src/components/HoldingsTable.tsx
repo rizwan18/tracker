@@ -14,18 +14,22 @@ const gainLossCls = (n: number) => (n >= 0 ? "text-[var(--color-eucalyptus)]" : 
  * Symbol · Name · Weighting · Units · Purchase Price · Purchase Value · Market Price · Market Value · Unrealised Gain/Loss.
  * Wall St Equities are shown in US$ only (no A$ conversion).
  *
- * Market Price/Value come straight from the database (Investment.marketPrice, set by
+ * Market Price/Value come from the database (Investment.marketPrice, set by
  * POST /investments/refresh-market-prices — see InvestmentsPage, which fires that once after
  * this table has already rendered from the stored values, and marketPriceRefresh.ts on the
  * backend, which only calls the market-data provider while the exchange is open). Each row
  * shows when that price was last *successfully* refreshed; a closed market or a failed refresh
- * simply leaves the previous stored price and timestamp in place. Purchase Price/Value come
+ * simply leaves the previous stored price and timestamp in place. Before a holding has ever
+ * been successfully refreshed — including over a weekend, when a refresh can't run at all —
+ * Market Price falls back to its last recorded valuation price instead of a blank dash, labelled
+ * "Recorded" rather than "As at" so it isn't mistaken for a live quote. Purchase Price/Value come
  * from the investment's cost base (summary.costBase, which includes brokerage — see
  * computeHoldingSummary on the backend) rather than the raw valuation, so brokerage entered via
  * "Update holding" or "Add a buy/sell transaction" is reflected here. Unrealised Gain/Loss =
  * Market Value − Purchase Value, shown in green for a gain and red for a loss. A holding falls
  * back to its last recorded valuation for Purchase Price/Value if it has no buy history yet
- * (cost base unknown), and is blank ("—") in the market columns until its first refresh.
+ * (cost base unknown), and is blank ("—") in the market columns only if it has neither a live
+ * price nor any recorded valuation at all.
  */
 export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST"; holdings: Investment[] }) {
   const isUs = market === "WALL_ST";
@@ -37,8 +41,13 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
     // Wall St values are US$ only; ASX values are A$ (falls back to the summary value for holdings with no valuation).
     const value = costBaseKnown ? inv.summary.costBase : h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null;
     const price = costBaseKnown && units ? value! / units : h ? h.marketPrice : null;
-    const marketPrice = inv.marketPrice ?? null;
-    const marketPriceAsAt = inv.marketPriceUpdatedAt ?? null;
+    // Prefer the persisted live price (Investment.marketPrice, from a successful refresh).
+    // Before that's ever happened for a holding — including over a weekend, when a refresh
+    // can't run at all — fall back to its last recorded valuation price rather than a blank
+    // dash, so Market Value/Unrealised Gain/Loss still show something meaningful.
+    const hasLivePrice = inv.marketPrice !== null && inv.marketPrice !== undefined;
+    const marketPrice = hasLivePrice ? inv.marketPrice! : h ? h.marketPrice : null;
+    const marketPriceAsAt = hasLivePrice ? inv.marketPriceUpdatedAt : h ? h.asAt : null;
     const marketValue = marketPrice !== null && units !== null ? marketPrice * units : null;
     const unrealisedGainLoss = marketValue !== null && value !== null ? marketValue - value : null;
     return {
@@ -49,6 +58,7 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
       value,
       marketPrice,
       marketPriceAsAt,
+      marketPriceIsLive: hasLivePrice,
       marketValue,
       unrealisedGainLoss,
     };
@@ -100,7 +110,7 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-line)]">
-            {rows.map(({ inv, weighting, units, price, value, marketPrice, marketPriceAsAt, marketValue, unrealisedGainLoss }) => (
+            {rows.map(({ inv, weighting, units, price, value, marketPrice, marketPriceAsAt, marketPriceIsLive, marketValue, unrealisedGainLoss }) => (
               <tr key={inv.id} className="hover:bg-[var(--color-paper-dim)]">
                 <td className="px-4 py-3 font-medium">
                   <Link to={`/investments/${inv.id}`} className="text-[var(--color-eucalyptus-dark)] hover:underline">
@@ -120,7 +130,11 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
                   {marketPrice !== null ? (
                     <>
                       <div>{formatPrice(marketPrice, currency)}</div>
-                      {marketPriceAsAt && <div className="text-[11px] font-normal text-[var(--color-ink-soft)] whitespace-nowrap">As at {formatDateTime(marketPriceAsAt)}</div>}
+                      {marketPriceAsAt && (
+                        <div className="text-[11px] font-normal text-[var(--color-ink-soft)] whitespace-nowrap">
+                          {marketPriceIsLive ? `As at ${formatDateTime(marketPriceAsAt)}` : `Recorded ${formatDateUtc(marketPriceAsAt)}`}
+                        </div>
+                      )}
                     </>
                   ) : (
                     dash
