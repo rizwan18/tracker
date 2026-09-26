@@ -307,6 +307,16 @@ model Investment {
   market      String?
   /// Currency the price is quoted in: AUD or USD.
   currency    String   @default("AUD")
+  /// Persisted live market price for a share/ETF/LIC (per unit, in `currency`), refreshed from the
+  /// market-data provider only while that security's exchange is open (see lib/marketHours.ts and
+  /// services/marketPriceRefresh.ts). Null until the first successful refresh.
+  marketPrice                  Float?
+  /// When this server last wrote a *successful* provider price to `marketPrice` above. This is the
+  /// timestamp shown to the user ("As at ...") — a failed refresh never changes it.
+  marketPriceUpdatedAt         DateTime?
+  /// The provider's own quote timestamp for that same price (e.g. Yahoo's regularMarketTime), kept
+  /// separately since it can differ slightly from marketPriceUpdatedAt (provider/quote latency).
+  marketPriceProviderTimestamp DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

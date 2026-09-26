@@ -70,6 +70,18 @@ export function normaliseTicker(raw: string | undefined | null): string {
   return String(raw ?? "").trim().toUpperCase();
 }
 
+/**
+ * The app stores plain tickers (e.g. "CBA", "AAPL"); this provider needs the ASX ".AX"
+ * suffix for Australian securities (e.g. "CBA.AX"). US tickers are used as-is.
+ * Keep in sync with frontend/src/lib/holdings.ts's toProviderTicker (same rule, used
+ * there for the "Check Security Price" page's direct lookups).
+ */
+export function toProviderTicker(ticker: string, market: "ASX" | "WALL_ST"): string {
+  const t = normaliseTicker(ticker);
+  if (market === "ASX" && !t.endsWith(".AX")) return `${t}.AX`;
+  return t;
+}
+
 interface YahooChartMeta {
   symbol?: string;
   regularMarketPrice?: number;

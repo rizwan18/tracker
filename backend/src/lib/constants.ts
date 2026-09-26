@@ -114,6 +114,9 @@ export const INVESTMENT_TYPES = [
 ] as const;
 export type InvestmentType = (typeof INVESTMENT_TYPES)[number];
 
+/** Types with a tradeable market price. Keep in sync with frontend/src/lib/holdings.ts's STOCK_TYPES. */
+export const STOCK_TYPES = ["SHARE", "ETF", "LIC"] as const;
+
 export const INVESTMENT_TRANSACTION_TYPES = ["BUY", "SELL"] as const;
 export type InvestmentTransactionType = (typeof INVESTMENT_TRANSACTION_TYPES)[number];
 

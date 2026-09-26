@@ -165,6 +165,16 @@ export interface Investment {
   /** Where a share/ETF trades. Older records have none and count as ASX. */
   market?: "ASX" | "WALL_ST" | null;
   currency?: "AUD" | "USD";
+  /** Persisted live market price (per unit, in `currency`) — refreshed from the market-data
+   * provider only while this security's exchange is open. Null until the first successful
+   * refresh. See POST /investments/refresh-market-prices. */
+  marketPrice: number | null;
+  /** When the server last wrote a *successful* provider price to marketPrice above — this is
+   * the "As at ..." timestamp shown to the user, and never changes on a failed refresh. */
+  marketPriceUpdatedAt: string | null;
+  /** Whether this security's exchange is trading right now (informational only; null for
+   * anything that isn't a share/ETF/LIC). */
+  marketOpen?: boolean | null;
   investmentTransactions: InvestmentTransactionRecord[];
   dividends: Dividend[];
   summary: {

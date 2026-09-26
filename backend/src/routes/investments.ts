@@ -4,6 +4,9 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { investmentSchema, investmentTransactionSchema, investmentValuationSchema, investmentInitialTransactionSchema } from "../lib/validation";
 import { computeWeightings, computeHoldingSummary, currentValueOf, valueHolding, type LatestValuation } from "../services/holdings";
+import { refreshMarketPrices } from "../services/marketPriceRefresh";
+import { isMarketOpen, toMarket } from "../lib/marketHours";
+import { STOCK_TYPES } from "../lib/constants";
 
 const router = Router();
 router.use(requireAuth);
@@ -13,10 +16,18 @@ function householdOf(req: AuthedRequest): string {
   return req.householdId;
 }
 
+/** Whether `inv`'s exchange is trading right now — informational only (see marketPriceRefresh.ts
+ * for the actual gate on calling the provider). null for anything that isn't a share/ETF/LIC. */
+function marketOpenOf(inv: { type: string; ticker: string | null; market: string | null }): boolean | null {
+  if (!STOCK_TYPES.includes(inv.type as (typeof STOCK_TYPES)[number]) || !inv.ticker) return null;
+  return isMarketOpen(toMarket(inv.market));
+}
+
 type ValuationRow = LatestValuation;
 
 const latestValuation = { valuations: { orderBy: { asAt: "desc" as const }, take: 1 } };
 const latestValuation2 = { valuations: { orderBy: { asAt: "desc" as const }, take: 1, select: { marketValueAud: true } } };
+
 
 function holdingDto(v: ValuationRow | undefined | null, weightingPercent: number | undefined) {
   if (!v) return null;
@@ -56,9 +67,26 @@ router.get(
         summary: computeHoldingSummary(inv.investmentTransactions, inv.currentValueOverride, valuations[0] ?? null),
         holding: holdingDto(valuations[0], weightings.get(inv.id)),
         totalDividends: inv.dividends.filter((d) => d.status === "RECEIVED").reduce((s: number, d) => s + d.netAmount, 0),
+        marketOpen: marketOpenOf(inv),
       };
     });
     res.json(withSummary);
+  })
+);
+
+// Refresh persisted market prices for the household's shares/ETFs from the market-data
+// provider — but only for holdings whose exchange is open right now, and not more than once
+// a minute per holding (see services/marketPriceRefresh.ts). Called by the frontend once,
+// shortly after the Shares and ETFs page has already rendered the stored database values, so
+// a slow/failed provider call never blocks or breaks the initial page load. Returns nothing
+// useful of its own — the frontend just re-fetches GET /investments afterwards to pick up
+// whatever this did or didn't change.
+router.post(
+  "/refresh-market-prices",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const householdId = householdOf(req);
+    await refreshMarketPrices(householdId);
+    res.status(204).end();
   })
 );
 
@@ -112,6 +140,7 @@ router.get(
       ...investment,
       summary: computeHoldingSummary(investment.investmentTransactions, investment.currentValueOverride, latest),
       holding: holdingDto(latest, weightings.get(investment.id)),
+      marketOpen: marketOpenOf(investment),
       valuations: investment.valuations.map((v) => ({ id: v.id, asAt: v.asAt.toISOString(), units: v.units, marketPrice: v.marketPrice, marketValue: v.marketValue, marketValueAud: v.marketValueAud, currency: v.currency, source: v.source })),
     });
   })

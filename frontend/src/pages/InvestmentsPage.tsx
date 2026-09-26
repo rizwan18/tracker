@@ -8,7 +8,6 @@ import { InvestmentForm } from "../components/InvestmentForm";
 import { HoldingsTable } from "../components/HoldingsTable";
 import { isStock, marketOf } from "../lib/holdings";
 import { formatCurrency, formatCurrencySigned } from "../lib/format";
-import { useLiveHoldingPrices } from "../hooks/useLiveHoldingPrices";
 
 const TYPE_LABELS: Record<string, string> = {
   SHARE: "Share",
@@ -38,8 +37,23 @@ export default function InvestmentsPage() {
   }, []);
 
   useEffect(load, [load]);
-  // Fetched fresh every time `investments` changes (i.e. every load of this page).
-  const livePrices = useLiveHoldingPrices(investments);
+
+  // Refresh persisted market prices in the background, once per page visit. The table above
+  // has already rendered from the database by the time this resolves — the backend itself
+  // decides which holdings are actually due (their exchange must be open, and it won't have
+  // refreshed the same one in the last minute — see refresh-market-prices), so this is safe
+  // to fire on every visit without creating uncontrolled provider traffic. Reload afterwards
+  // so the table picks up whatever did or didn't change.
+  useEffect(() => {
+    api
+      .post("/investments/refresh-market-prices")
+      .catch(() => {
+        /* a refresh failure never blocks the page — the table keeps showing the last saved prices */
+      })
+      .finally(load);
+    // Intentionally run once per mount only, not on every `investments`/`load` identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totalValue = investments.reduce((s, i) => s + i.summary.currentValue, 0);
   // Only holdings with a buy/sell history have a cost to compare against.
@@ -107,8 +121,8 @@ export default function InvestmentsPage() {
         />
       ) : (
         <div className="space-y-8">
-          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} livePrices={livePrices} />}
-          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} livePrices={livePrices} />}
+          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} />}
+          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} />}
           {stocks.length > 0 && latestStatement === undefined && <p className="text-xs text-[var(--color-ink-soft)]">Units and prices come from what you record on each holding.</p>}
 
           {others.length > 0 && (
