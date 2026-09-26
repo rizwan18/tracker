@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Investment } from "../api/types";
 import { Button, Card, SectionHeading, StatTile, HelpText } from "../components/ui";
@@ -9,12 +9,11 @@ import { DividendForm } from "../components/DividendForm";
 import { HoldingValuationForm } from "../components/HoldingValuationForm";
 import { LinkedTransactions } from "../components/LinkedTransactions";
 import { useFinancialYear } from "../context/FinancialYearContext";
-import { formatCurrency, formatCurrencySigned, formatDate, formatDateUtc, formatMoney } from "../lib/format";
+import { formatCurrency, formatDate, formatDateUtc, formatMoney } from "../lib/format";
 import { MARKET_TITLES, formatPercent, formatPrice, formatUnits, formatUsd, isStock, marketOf } from "../lib/holdings";
 
 export default function InvestmentDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { financialYearId } = useFinancialYear();
   const [investment, setInvestment] = useState<Investment | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,12 +31,6 @@ export default function InvestmentDetailPage() {
   }, [id]);
 
   useEffect(load, [load]);
-
-  async function handleDelete() {
-    if (!id || !confirm("Remove this investment and all its recorded transactions and dividends?")) return;
-    await api.delete(`/investments/${id}`);
-    navigate("/investments");
-  }
 
   async function handleDeleteTx(txId: string) {
     if (!confirm("Remove this transaction?")) return;
@@ -63,27 +56,13 @@ export default function InvestmentDetailPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeading
-        title={`${investment.name}${investment.ticker ? ` (${investment.ticker})` : ""}`}
-        subtitle={investment.notes ?? undefined}
-        action={
-          <Button variant="danger" onClick={handleDelete}>
-            Remove
-          </Button>
-        }
-      />
+      <SectionHeading title={`${investment.name}${investment.ticker ? ` (${investment.ticker})` : ""}`} subtitle={investment.notes ?? undefined} />
 
       {isStock(investment) && <HoldingCard investment={investment} onUpdate={() => setShowHoldingForm(true)} />}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <StatTile label="Units held" value={formatUnits(investment.summary.quantity)} />
         <StatTile label="Cost base" value={investment.summary.costBaseKnown === false ? "—" : formatCurrency(investment.summary.costBase)} help={investment.summary.costBaseKnown === false ? "Add your buy history to see what you paid." : "What you paid in total, including brokerage."} />
-        <StatTile label="Current value" value={formatCurrency(investment.summary.currentValue)} tone="accent" />
-        {investment.summary.costBaseKnown === false ? (
-          <StatTile label="Unrealised gain/loss" value="—" help="Add your buy history to see gains and losses." />
-        ) : (
-          <StatTile label="Unrealised gain/loss" value={formatCurrencySigned(investment.summary.unrealisedGainLoss)} tone={investment.summary.unrealisedGainLoss >= 0 ? "positive" : "negative"} />
-        )}
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -98,16 +77,21 @@ export default function InvestmentDetailPage() {
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                   .map((tx) => (
                     <li key={tx.id} className="flex items-center justify-between px-5 py-3">
-                      <div>
-                        <p className="font-medium">
-                          {tx.type === "BUY" ? "Buy" : "Sell"} · {tx.quantity} @ {formatCurrency(tx.pricePerUnit)}
-                        </p>
-                        <p className="text-xs text-[var(--color-ink-soft)]">
-                          {formatDate(tx.date)}
-                          {tx.brokerage > 0 ? ` · Brokerage ${formatCurrency(tx.brokerage)}` : ""}
-                        </p>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${tx.type === "BUY" ? "bg-[var(--color-eucalyptus-tint)] text-[var(--color-eucalyptus-dark)]" : "bg-[var(--color-brick-tint)] text-[var(--color-brick)]"}`}>
+                          {tx.type === "BUY" ? "Buy" : "Sell"}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">
+                            {tx.quantity} @ {formatCurrency(tx.pricePerUnit)}
+                          </p>
+                          <p className="text-xs text-[var(--color-ink-soft)]">
+                            {formatDate(tx.date)}
+                            {tx.brokerage > 0 ? ` · Brokerage ${formatCurrency(tx.brokerage)}` : ""}
+                          </p>
+                        </div>
                       </div>
-                      <button onClick={() => handleDeleteTx(tx.id)} className="text-xs text-[var(--color-brick)] hover:underline">
+                      <button onClick={() => handleDeleteTx(tx.id)} className="text-xs text-[var(--color-brick)] hover:underline shrink-0">
                         Delete
                       </button>
                     </li>
@@ -241,14 +225,12 @@ function HoldingCard({ investment, onUpdate }: { investment: Investment; onUpdat
   const h = investment.holding ?? null;
   const market = marketOf(investment);
   const isUs = market === "WALL_ST";
-  // Purchase Price/Value and Unrealised Gain/Loss come from the cost base (summary.costBase, which
-  // includes brokerage) rather than the raw valuation, so they match the Cost base / Unrealised
-  // gain/loss stat tiles shown just above this card.
+  // Purchase Price/Value come from the cost base (summary.costBase, which includes brokerage)
+  // rather than the raw valuation, so they match the Cost base stat tile shown just above this card.
   const costBaseKnown = investment.summary.costBaseKnown !== false;
   const units = h ? h.units : null;
   const purchaseValue = costBaseKnown ? investment.summary.costBase : h ? h.marketValue : null;
   const purchasePrice = costBaseKnown && units ? purchaseValue! / units : h ? h.marketPrice : null;
-  const unrealisedGainLoss = costBaseKnown ? investment.summary.unrealisedGainLoss : null;
   const cell = (label: string, value: string) => (
     <div>
       <dt className="text-xs text-[var(--color-ink-soft)]">{label}</dt>
@@ -275,9 +257,6 @@ function HoldingCard({ investment, onUpdate }: { investment: Investment; onUpdat
           {cell("Units", h ? formatUnits(h.units) : "—")}
           {cell(isUs ? "Purchase Price (US$)" : "Purchase Price", purchasePrice != null ? formatPrice(purchasePrice, isUs ? "USD" : "AUD") : "—")}
           {cell(isUs ? "Purchase Value (US$)" : "Purchase Value", purchaseValue != null ? (isUs ? formatUsd(purchaseValue) : formatMoney(purchaseValue)) : "—")}
-          {cell(isUs ? "Market Price (US$)" : "Market Price", h?.currentMarketPrice != null ? formatPrice(h.currentMarketPrice, isUs ? "USD" : "AUD") : "—")}
-          {cell(isUs ? "Market Value (US$)" : "Market Value", h?.currentMarketValue != null ? (isUs ? formatUsd(h.currentMarketValue) : formatMoney(h.currentMarketValue)) : "—")}
-          {cell("Unrealised Gain/Loss", unrealisedGainLoss != null ? (isUs ? formatUsd(unrealisedGainLoss) : formatMoney(unrealisedGainLoss)) : "—")}
         </dl>
       </Card>
     </section>
