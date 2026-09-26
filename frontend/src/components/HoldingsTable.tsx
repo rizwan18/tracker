@@ -5,16 +5,19 @@ import { MARKET_TITLES, formatPercent, formatPrice, formatUnits, formatUsd } fro
 import { formatDateUtc, formatMoney } from "../lib/format";
 
 const fmtValue = (n: number, isUs: boolean) => (isUs ? formatUsd(n) : formatMoney(n));
+// Same +/- convention as the Realised Transactions page, just usable in either currency.
+const fmtSigned = (n: number, isUs: boolean) => `${n < 0 ? "-" : "+"}${fmtValue(Math.abs(n), isUs)}`;
+const gainLossCls = (n: number) => (n >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]");
 
 /**
  * Share and ETF holdings laid out like a Stake portfolio report:
  * Symbol · Name · Weighting · Units · Purchase Price · Purchase Value · Market Price · Market Value · Unrealised Gain/Loss.
  * Wall St Equities are shown in US$ only (no A$ conversion).
  *
- * Market Price / Market Value / Unrealised Gain/Loss come from `livePrices` (see
- * useLiveHoldingPrices), fetched fresh on every page load from the same market-data
- * endpoint as the Check Security Price page. A holding is blank ("—") in these columns
- * until its live price has loaded, or if no live price could be found for it.
+ * Market Price / Market Value come from `livePrices` (see useLiveHoldingPrices), fetched fresh on
+ * every page load from the same market-data endpoint as the Check Security Price page. Unrealised
+ * Gain/Loss = Market Value − Purchase Value, shown in green for a gain and red for a loss. A holding
+ * is blank ("—") in these columns until its live price has loaded, or if no live price could be found.
  */
 export function HoldingsTable({ market, holdings, livePrices }: { market: "ASX" | "WALL_ST"; holdings: Investment[]; livePrices?: Record<string, LatestPrice> }) {
   const isUs = market === "WALL_ST";
@@ -22,18 +25,18 @@ export function HoldingsTable({ market, holdings, livePrices }: { market: "ASX" 
   const rows = holdings.map((inv) => {
     const h = inv.holding ?? null;
     const units = h ? h.units : inv.summary.quantity > 0 ? inv.summary.quantity : null;
+    // Wall St values are US$ only; ASX values are A$ (falls back to the summary value for holdings with no valuation).
+    const value = h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null;
     const live = livePrices?.[inv.id] ?? null;
     const marketPrice = live ? live.price : null;
     const marketValue = live && units !== null ? live.price * units : null;
-    // Only compare against a cost base when there's actual buy/sell history to derive one from.
-    const unrealisedGainLoss = marketValue !== null && inv.summary.costBaseKnown !== false ? marketValue - inv.summary.costBase : null;
+    const unrealisedGainLoss = marketValue !== null && value !== null ? marketValue - value : null;
     return {
       inv,
       weighting: h ? h.weightingPercent : null,
       units,
       price: h ? h.marketPrice : null,
-      // Wall St values are US$ only; ASX values are A$ (falls back to the summary value for holdings with no valuation).
-      value: h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null,
+      value,
       marketPrice,
       marketValue,
       unrealisedGainLoss,
@@ -91,7 +94,9 @@ export function HoldingsTable({ market, holdings, livePrices }: { market: "ASX" 
                 <td className="px-4 py-3 text-right tabular-nums font-medium">{value !== null ? fmtValue(value, isUs) : dash}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{marketPrice !== null ? formatPrice(marketPrice, currency) : dash}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{marketValue !== null ? fmtValue(marketValue, isUs) : dash}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{unrealisedGainLoss !== null ? fmtValue(unrealisedGainLoss, isUs) : dash}</td>
+                <td className={`px-4 py-3 text-right tabular-nums font-medium ${unrealisedGainLoss !== null ? gainLossCls(unrealisedGainLoss) : ""}`}>
+                  {unrealisedGainLoss !== null ? fmtSigned(unrealisedGainLoss, isUs) : dash}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -103,7 +108,10 @@ export function HoldingsTable({ market, holdings, livePrices }: { market: "ASX" 
               <td className="px-4 py-3 text-right tabular-nums">{formatPercent(sum((r) => r.weighting))}</td>
               <td className="px-4 py-3" colSpan={2} />
               <td className="px-4 py-3 text-right tabular-nums">{fmtValue(sum((r) => r.value), isUs)}</td>
-              <td className="px-4 py-3" colSpan={3} />
+              <td className="px-4 py-3" colSpan={2} />
+              <td className={`px-4 py-3 text-right tabular-nums ${gainLossCls(sum((r) => r.unrealisedGainLoss))}`}>
+                {rows.some((r) => r.unrealisedGainLoss !== null) ? fmtSigned(sum((r) => r.unrealisedGainLoss), isUs) : dash}
+              </td>
             </tr>
           </tfoot>
         </table>
