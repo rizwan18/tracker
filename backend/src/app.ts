@@ -17,6 +17,7 @@ import documentRoutes from "./routes/documents";
 import dataRoutes from "./routes/data";
 import portfolioRoutes from "./routes/portfolios";
 import businessRoutes from "./routes/business";
+import sourcingRoutes from "./routes/sourcing";
 import marketDataRoutes from "./routes/marketData";
 import { errorHandler } from "./middleware/errorHandler";
 
@@ -51,6 +52,7 @@ export function createApp() {
   app.use("/api/data", dataRoutes);
   app.use("/api/portfolios", portfolioRoutes);
   app.use("/api/business", businessRoutes);
+  app.use("/api/business/sourcing", sourcingRoutes);
   app.use("/api/market-data", marketDataRoutes);
 
   // 404 for unknown API routes, before the generic error handler.

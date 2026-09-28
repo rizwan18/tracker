@@ -137,6 +137,27 @@ export type PropertyType = (typeof PROPERTY_TYPES)[number];
 export const RENT_FREQUENCIES = ["WEEKLY", "FORTNIGHTLY", "MONTHLY"] as const;
 export type RentFrequency = (typeof RENT_FREQUENCIES)[number];
 
+// ---------------------------------------------------------------------------
+// Sourcing (Company Finance): purchases from overseas/local manufacturers & suppliers
+// ---------------------------------------------------------------------------
+export const SOURCING_ORIGINS = ["OVERSEAS", "LOCAL"] as const;
+export type SourcingOrigin = (typeof SOURCING_ORIGINS)[number];
+
+export const SOURCING_STATUSES = ["ENQUIRY", "ORDERED", "IN_PRODUCTION", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
+export type SourcingStatus = (typeof SOURCING_STATUSES)[number];
+
+export const SOURCING_PAYMENT_TYPES = ["DEPOSIT", "PROGRESS", "BALANCE", "FULL", "OTHER"] as const;
+export type SourcingPaymentType = (typeof SOURCING_PAYMENT_TYPES)[number];
+
+export const SOURCING_PAYMENT_METHODS = ["BANK_TRANSFER", "CREDIT_CARD", "PAYPAL", "CASH", "OTHER"] as const;
+export type SourcingPaymentMethod = (typeof SOURCING_PAYMENT_METHODS)[number];
+
+export const SOURCING_INSPECTION_RESULTS = ["PENDING", "PASSED", "FAILED", "PASSED_WITH_NOTES"] as const;
+export type SourcingInspectionResult = (typeof SOURCING_INSPECTION_RESULTS)[number];
+
+export const SOURCING_SHIPMENT_METHODS = ["SEA", "AIR", "COURIER", "ROAD", "OTHER"] as const;
+export type SourcingShipmentMethod = (typeof SOURCING_SHIPMENT_METHODS)[number];
+
 /** Rough plain-English glossary shown as tooltips/help text throughout the UI. */
 export const GLOSSARY: Record<string, string> = {
   "Capital Gains": "Profit or loss when you sell an investment for more or less than you paid.",

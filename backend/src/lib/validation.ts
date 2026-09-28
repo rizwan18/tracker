@@ -3,7 +3,10 @@ import { isValidAbn, normaliseAbn } from "./abn";
 import { normaliseWebsite } from "./website";
 import { GST_MODES } from "../services/business/gst";
 import { ACCOUNT_GROUPS, ACCOUNT_TYPES_LEDGER, GROUPS_BY_TYPE } from "../services/business/chart";
-import { BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES, PORTFOLIO_TYPES } from "./constants";
+import {
+  BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES, PORTFOLIO_TYPES,
+  SOURCING_ORIGINS, SOURCING_STATUSES, SOURCING_PAYMENT_TYPES, SOURCING_PAYMENT_METHODS, SOURCING_INSPECTION_RESULTS, SOURCING_SHIPMENT_METHODS,
+} from "./constants";
 
 export const registerSchema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -256,6 +259,89 @@ export const manualJournalSchema = z.object({
       })
     )
     .min(2, "An entry needs at least two lines."),
+});
+
+// ---------------------------------------------------------------------------
+// Sourcing (Company Finance)
+// ---------------------------------------------------------------------------
+const currencyCode = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{3}$/, "Use a 3-letter currency code, e.g. AUD, USD, CNY.")
+  .default("AUD");
+
+const optionalSourcingText = (max: number) =>
+  z.string().trim().max(max, `Please keep this under ${max} characters.`).optional().nullable().transform((v) => (v ? v : null));
+
+export const sourcingRecordSchema = z
+  .object({
+    origin: z.enum(SOURCING_ORIGINS),
+    status: z.enum(SOURCING_STATUSES).default("ENQUIRY"),
+    reference: optionalSourcingText(60),
+    itemDescription: z.string().trim().min(1, "Please describe what's being sourced.").max(300),
+    quantity: z.coerce.number().positive("Quantity must be more than zero.").max(1_000_000),
+    unitCostCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS),
+    currency: currencyCode,
+    exchangeRateToAud: z.coerce.number().positive("The exchange rate must be more than zero.").max(1000).optional().nullable(),
+    orderDate: z.coerce.date().optional().nullable(),
+    expectedDate: z.coerce.date().optional().nullable(),
+    deliveredDate: z.coerce.date().optional().nullable(),
+    supplierName: z.string().trim().min(1, "Please name the supplier or manufacturer.").max(150),
+    supplierCountry: optionalSourcingText(80),
+    supplierContactName: optionalSourcingText(120),
+    supplierEmail: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .nullable()
+      .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: "That email address doesn't look right." })
+      .transform((v) => (v ? v : null)),
+    supplierPhone: optionalSourcingText(40),
+    supplierWebsite: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .nullable()
+      .refine((v) => !v || normaliseWebsite(v) !== null, { message: "That doesn't look like a website address, e.g. www.supplier.com." })
+      .transform((v) => (v ? normaliseWebsite(v) : null)),
+    supplierAddress: optionalSourcingText(300),
+    notes: optionalSourcingText(2000),
+  })
+  .refine((v) => v.origin === "LOCAL" || !!v.supplierCountry, { message: "Please enter the supplier's country for an overseas order.", path: ["supplierCountry"] });
+
+export const sourcingPaymentSchema = z.object({
+  date: z.coerce.date(),
+  amountCents: z.number().int("Amounts are in whole cents.").min(1, "The amount must be more than zero.").max(MAX_ENTRY_CENTS),
+  type: z.enum(SOURCING_PAYMENT_TYPES).default("DEPOSIT"),
+  method: z.enum(SOURCING_PAYMENT_METHODS).optional().nullable(),
+  bankAccountId: z.string().optional().nullable(),
+  reference: optionalSourcingText(80),
+  notes: optionalSourcingText(1000),
+});
+
+export const sourcingInspectionSchema = z.object({
+  date: z.coerce.date(),
+  inspector: optionalSourcingText(150),
+  result: z.enum(SOURCING_INSPECTION_RESULTS).default("PENDING"),
+  costCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS).default(0),
+  notes: optionalSourcingText(2000),
+});
+
+export const sourcingShipmentSchema = z.object({
+  method: z.enum(SOURCING_SHIPMENT_METHODS).optional().nullable(),
+  carrier: optionalSourcingText(120),
+  trackingNumber: optionalSourcingText(80),
+  shippedDate: z.coerce.date().optional().nullable(),
+  eta: z.coerce.date().optional().nullable(),
+  arrivedDate: z.coerce.date().optional().nullable(),
+  freightCostCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS).default(0),
+  customsDutyCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS).default(0),
+  insuranceCostCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS).default(0),
+  otherCostCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS).default(0),
+  notes: optionalSourcingText(2000),
 });
 
 /** Property manager / managing agent details. Empty strings are treated as "not set". */

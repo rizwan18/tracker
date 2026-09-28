@@ -31,7 +31,7 @@ router.post(
     if (!req.householdId) throw new FriendlyError("Please finish setting up your household first.", 400);
     if (!req.file) throw new FriendlyError("Please choose a file to upload.");
 
-    const { transactionId, propertyId, investmentId, dividendId, capitalGainDisposalId } = req.body as Record<string, string | undefined>;
+    const { transactionId, propertyId, investmentId, dividendId, capitalGainDisposalId, sourcingRecordId } = req.body as Record<string, string | undefined>;
 
     // Blob pathnames are namespaced by household and given a random suffix
     // by Vercel Blob (addRandomSuffix defaults to true), so they aren't
@@ -54,6 +54,7 @@ router.post(
         investmentId: investmentId || null,
         dividendId: dividendId || null,
         capitalGainDisposalId: capitalGainDisposalId || null,
+        sourcingRecordId: sourcingRecordId || null,
       },
     });
     res.status(201).json(document);

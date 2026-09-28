@@ -59,6 +59,7 @@ model Household {
   reminders     Reminder[]
   documents     Document[]
   capitalGainDisposals CapitalGainDisposal[]
+  sourcingRecords SourcingRecord[]
 }
 
 model User {
@@ -501,6 +502,8 @@ model Document {
   dividend      Dividend? @relation(fields: [dividendId], references: [id])
   capitalGainDisposalId String?
   capitalGainDisposal   CapitalGainDisposal? @relation(fields: [capitalGainDisposalId], references: [id])
+  sourcingRecordId String?
+  sourcingRecord   SourcingRecord? @relation(fields: [sourcingRecordId], references: [id])
   createdAt     DateTime @default(now())
 
   @@index([householdId])
@@ -557,6 +560,7 @@ model LedgerAccount {
   lines         JournalLine[]
   entries       BusinessEntry[] @relation("EntryAccount")
   paidEntries   BusinessEntry[] @relation("EntryBank")
+  sourcingPayments SourcingPayment[]
 
   @@unique([householdId, code])
   @@unique([householdId, systemKey])
@@ -622,4 +626,119 @@ model JournalLine {
 
   @@index([entryId])
   @@index([accountId])
+}
+
+// ---------------------------------------------------------------------------
+// Sourcing (Company Finance): purchases from overseas and local manufacturers
+// and suppliers. Kept as its own record — separate from BusinessEntry — because
+// a sourcing order has a lot more shape than a single bill: it's placed with a
+// supplier, often paid in stages and in a foreign currency, may go through a
+// quality inspection, and has its own shipping/customs costs before it lands.
+// Money here is stored as whole cents (Int), in the record's own `currency`,
+// following the same convention as the rest of Company Finance.
+// ---------------------------------------------------------------------------
+
+/// A purchase / sourcing order from a manufacturer or supplier, overseas or local.
+model SourcingRecord {
+  id                String    @id @default(cuid())
+  householdId       String
+  household         Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  origin            String    // OVERSEAS | LOCAL
+  status            String    @default("ENQUIRY") // ENQUIRY | ORDERED | IN_PRODUCTION | SHIPPED | DELIVERED | CANCELLED
+  reference         String?   // purchase order / order number
+  itemDescription   String
+  quantity          Float     @default(1)
+  unitCostCents     Int       @default(0) // in `currency`, excludes shipping/customs/inspection
+  currency          String    @default("AUD") // ISO 4217 code, e.g. AUD, USD, CNY
+  /// Multiply an amount in `currency` by this to estimate its value in AUD. Only used (and only
+  /// meaningful) when currency isn't AUD; null means no conversion has been recorded yet.
+  exchangeRateToAud Float?
+  orderDate         DateTime?
+  expectedDate      DateTime? // expected ready/delivery date
+  deliveredDate     DateTime?
+
+  // Supplier / manufacturer contact details — kept directly on the record, the
+  // same way property manager details are kept on Property, since there's no
+  // separate contacts/companies table in this app.
+  supplierName        String
+  supplierCountry     String?
+  supplierContactName String?
+  supplierEmail       String?
+  supplierPhone       String?
+  supplierWebsite     String?
+  supplierAddress     String?
+
+  notes       String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  payments    SourcingPayment[]
+  inspections SourcingInspection[]
+  shipments   SourcingShipment[]
+  documents   Document[]
+
+  @@index([householdId])
+  @@index([householdId, status])
+  @@index([householdId, origin])
+  @@index([householdId, orderDate])
+}
+
+/// A payment made towards a sourcing order — orders are often paid in stages
+/// (e.g. deposit, then balance before shipment), so this is one-to-many rather
+/// than the single paidDate/status pair used on BusinessEntry.
+model SourcingPayment {
+  id               String         @id @default(cuid())
+  sourcingRecordId String
+  sourcingRecord   SourcingRecord @relation(fields: [sourcingRecordId], references: [id], onDelete: Cascade)
+  date             DateTime
+  amountCents      Int            // in the order's currency
+  type             String         @default("DEPOSIT") // DEPOSIT | PROGRESS | BALANCE | FULL | OTHER
+  method           String?        // BANK_TRANSFER | CREDIT_CARD | PAYPAL | CASH | OTHER
+  bankAccountId    String?
+  bankAccount      LedgerAccount? @relation(fields: [bankAccountId], references: [id])
+  reference        String?        // bank reference / transaction id
+  notes            String?
+  createdAt        DateTime       @default(now())
+
+  @@index([sourcingRecordId])
+  @@index([bankAccountId])
+}
+
+/// A quality-control / inspection cost incurred for a sourcing order (e.g. a third-party
+/// inspection agency checking goods before they ship).
+model SourcingInspection {
+  id               String         @id @default(cuid())
+  sourcingRecordId String
+  sourcingRecord   SourcingRecord @relation(fields: [sourcingRecordId], references: [id], onDelete: Cascade)
+  date             DateTime
+  inspector        String?        // inspection company / person
+  result           String         @default("PENDING") // PENDING | PASSED | FAILED | PASSED_WITH_NOTES
+  costCents        Int            @default(0) // in the order's currency
+  notes            String?
+  createdAt        DateTime       @default(now())
+
+  @@index([sourcingRecordId])
+}
+
+/// Shipping / freight financial details for a sourcing order. Split out from the order
+/// itself since a single order can ship in more than one shipment.
+model SourcingShipment {
+  id                  String         @id @default(cuid())
+  sourcingRecordId    String
+  sourcingRecord      SourcingRecord @relation(fields: [sourcingRecordId], references: [id], onDelete: Cascade)
+  method              String?        // SEA | AIR | COURIER | ROAD | OTHER
+  carrier             String?
+  trackingNumber      String?
+  shippedDate         DateTime?
+  eta                 DateTime?
+  arrivedDate         DateTime?
+  freightCostCents    Int            @default(0) // in the order's currency
+  customsDutyCents    Int            @default(0)
+  insuranceCostCents  Int            @default(0)
+  otherCostCents      Int            @default(0)
+  notes               String?
+  createdAt           DateTime       @default(now())
+
+  @@index([sourcingRecordId])
 }
