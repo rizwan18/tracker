@@ -24,6 +24,36 @@
   --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Fixed brand colours. Unlike the --color-* tokens above these are NEVER re-themed,
+   so things that must always look the same (the Personal/Company badges, the green
+   "investment property" colour) stay put when the Company theme is active. */
+:root {
+  --brand-green: #1f4d3d;
+  --brand-green-dark: #163a2e;
+  --brand-green-tint: #dfeae3;
+  --brand-blue: #1e4f9c;
+  --brand-blue-dark: #163b78;
+  --brand-blue-tint: #dce8f8;
+}
+
+/* Company Finance theme: a cool blue palette so a company portfolio is instantly
+   distinguishable from a personal (eucalyptus green) one. AppShell sets
+   data-portfolio="company" on <html> while a Company portfolio is open.
+   We only re-point the existing tokens, so every page, chart and form follows
+   automatically. Ochre (warnings) and brick (negative figures) stay as they are
+   because they carry meaning. Written outside @theme/@layer so it wins over the
+   defaults above. */
+:root[data-portfolio="company"] {
+  --color-paper: #f4f7fb;
+  --color-paper-dim: #e9eff7;
+  --color-ink: #14243a;
+  --color-ink-soft: #465a73;
+  --color-line: #d5dfec;
+  --color-eucalyptus: var(--brand-blue);
+  --color-eucalyptus-dark: var(--brand-blue-dark);
+  --color-eucalyptus-tint: var(--brand-blue-tint);
+}
+
 html {
   background-color: var(--color-paper);
 }
