@@ -33,6 +33,7 @@ export default function SourcingDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [itemId, setItemId] = useState<string | null>(null); // the payment/inspection/shipment being edited, if any
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -63,7 +64,14 @@ export default function SourcingDetailPage() {
   const money = (cents: number) => formatOrderMoney(cents, r.currency);
   const today = new Date().toISOString().slice(0, 10);
   const banks = accounts.filter((a) => a.isBank && a.isActive);
-  const close = () => setDialog(null);
+  const close = () => {
+    setDialog(null);
+    setItemId(null);
+  };
+  const openDialog = (d: Dialog, id: string | null = null) => {
+    setItemId(id);
+    setDialog(d);
+  };
   const saved = (next: SourcingDetail) => {
     setRecord(next);
     close();
@@ -200,7 +208,7 @@ export default function SourcingDetailPage() {
 
       {tab === "payments" && (
         <TabPanel id="payments">
-          <div className="flex justify-end"><Button onClick={() => setDialog("payment")}>+ Record payment</Button></div>
+          <div className="flex justify-end"><Button onClick={() => openDialog("payment")}>+ Record payment</Button></div>
           {r.payments.length === 0 ? (
             <EmptyState title="No payments yet" description="Record deposits, progress payments and the final balance as you pay the supplier." />
           ) : (
@@ -215,6 +223,7 @@ export default function SourcingDetailPage() {
                       </p>
                     </div>
                     <span className="font-medium">{money(p.amountCents)}</span>
+                    <Button variant="ghost" size="sm" onClick={() => openDialog("payment", p.id)}>Edit</Button>
                     <Button variant="ghost" size="sm" onClick={() => confirm("Delete this payment?") && act(() => api.delete<SourcingDetail>(`/business/sourcing/${r.id}/payments/${p.id}`))}>Delete</Button>
                   </li>
                 ))}
@@ -226,7 +235,7 @@ export default function SourcingDetailPage() {
 
       {tab === "inspections" && (
         <TabPanel id="inspections">
-          <div className="flex justify-end"><Button onClick={() => setDialog("inspection")}>+ Add inspection</Button></div>
+          <div className="flex justify-end"><Button onClick={() => openDialog("inspection")}>+ Add inspection</Button></div>
           {r.inspections.length === 0 ? (
             <EmptyState title="No inspections yet" description="Track quality-control inspections and what each one cost." />
           ) : (
@@ -239,6 +248,7 @@ export default function SourcingDetailPage() {
                       <p className="text-xs text-[var(--color-ink-soft)]">{[i.inspector, i.notes].filter(Boolean).join(" · ")}</p>
                     </div>
                     <span className="font-medium">{money(i.costCents)}</span>
+                    <Button variant="ghost" size="sm" onClick={() => openDialog("inspection", i.id)}>Edit</Button>
                     <Button variant="ghost" size="sm" onClick={() => confirm("Delete this inspection?") && act(() => api.delete<SourcingDetail>(`/business/sourcing/${r.id}/inspections/${i.id}`))}>Delete</Button>
                   </li>
                 ))}
@@ -250,7 +260,7 @@ export default function SourcingDetailPage() {
 
       {tab === "shipments" && (
         <TabPanel id="shipments">
-          <div className="flex justify-end"><Button onClick={() => setDialog("shipment")}>+ Add shipment</Button></div>
+          <div className="flex justify-end"><Button onClick={() => openDialog("shipment")}>+ Add shipment</Button></div>
           {r.shipments.length === 0 ? (
             <EmptyState title="No shipments yet" description="Track freight, customs and insurance costs, plus dates and tracking." />
           ) : (
@@ -270,6 +280,7 @@ export default function SourcingDetailPage() {
                       </div>
                       <div className="text-right">
                         <p className="font-medium">{money(total)}</p>
+                        <Button variant="ghost" size="sm" onClick={() => openDialog("shipment", s.id)}>Edit</Button>
                         <Button variant="ghost" size="sm" onClick={() => confirm("Delete this shipment?") && act(() => api.delete<SourcingDetail>(`/business/sourcing/${r.id}/shipments/${s.id}`))}>Delete</Button>
                       </div>
                     </div>
@@ -316,9 +327,21 @@ export default function SourcingDetailPage() {
       )}
 
       {dialog === "edit" && <Modal title="Edit sourcing record" onClose={close}><SourcingRecordForm initial={r} onCancel={close} onSaved={saved} /></Modal>}
-      {dialog === "payment" && <Modal title="Record a payment" onClose={close}><SourcingPaymentForm recordId={r.id} currency={r.currency} banks={banks} defaultDate={today} onCancel={close} onSaved={saved} /></Modal>}
-      {dialog === "inspection" && <Modal title="Add an inspection" onClose={close}><SourcingInspectionForm recordId={r.id} currency={r.currency} defaultDate={today} onCancel={close} onSaved={saved} /></Modal>}
-      {dialog === "shipment" && <Modal title="Add a shipment" onClose={close}><SourcingShipmentForm recordId={r.id} currency={r.currency} onCancel={close} onSaved={saved} /></Modal>}
+      {dialog === "payment" && (
+        <Modal title={itemId ? "Edit payment" : "Record a payment"} onClose={close}>
+          <SourcingPaymentForm recordId={r.id} currency={r.currency} banks={banks} defaultDate={today} initial={r.payments.find((p) => p.id === itemId)} onCancel={close} onSaved={saved} />
+        </Modal>
+      )}
+      {dialog === "inspection" && (
+        <Modal title={itemId ? "Edit inspection" : "Add an inspection"} onClose={close}>
+          <SourcingInspectionForm recordId={r.id} currency={r.currency} defaultDate={today} initial={r.inspections.find((i) => i.id === itemId)} onCancel={close} onSaved={saved} />
+        </Modal>
+      )}
+      {dialog === "shipment" && (
+        <Modal title={itemId ? "Edit shipment" : "Add a shipment"} onClose={close}>
+          <SourcingShipmentForm recordId={r.id} currency={r.currency} initial={r.shipments.find((s) => s.id === itemId)} onCancel={close} onSaved={saved} />
+        </Modal>
+      )}
     </div>
   );
 }

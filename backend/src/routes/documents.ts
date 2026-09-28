@@ -33,6 +33,19 @@ router.post(
 
     const { transactionId, propertyId, investmentId, dividendId, capitalGainDisposalId, sourcingRecordId } = req.body as Record<string, string | undefined>;
 
+    // A document may only be attached to a record in the caller's own household. Checked before
+    // anything is uploaded, so a bad id can't leave an orphaned file in blob storage.
+    const householdId = req.householdId;
+    const owned = await Promise.all([
+      transactionId ? prisma.transaction.count({ where: { id: transactionId, householdId } }) : 1,
+      propertyId ? prisma.property.count({ where: { id: propertyId, householdId } }) : 1,
+      investmentId ? prisma.investment.count({ where: { id: investmentId, householdId } }) : 1,
+      dividendId ? prisma.dividend.count({ where: { id: dividendId, investment: { householdId } } }) : 1,
+      capitalGainDisposalId ? prisma.capitalGainDisposal.count({ where: { id: capitalGainDisposalId, householdId } }) : 1,
+      sourcingRecordId ? prisma.sourcingRecord.count({ where: { id: sourcingRecordId, householdId } }) : 1,
+    ]);
+    if (owned.some((n) => n === 0)) throw new FriendlyError("We couldn't find the item you're attaching this document to.", 404);
+
     // Blob pathnames are namespaced by household and given a random suffix
     // by Vercel Blob (addRandomSuffix defaults to true), so they aren't
     // guessable — but the *only* URL the app ever hands back to a client is

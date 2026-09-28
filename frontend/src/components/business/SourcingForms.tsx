@@ -1,7 +1,8 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError } from "../../api/client";
 import type {
-  LedgerAccount, SourcingDetail, SourcingInspectionResult, SourcingOrigin, SourcingPaymentMethod, SourcingPaymentType, SourcingShipmentMethod, SourcingStatus,
+  LedgerAccount, SourcingDetail, SourcingInspection, SourcingInspectionResult, SourcingOrigin, SourcingPayment, SourcingPaymentMethod, SourcingPaymentType,
+  SourcingShipment, SourcingShipmentMethod, SourcingStatus,
 } from "../../api/businessTypes";
 import { Button, Field, inputClass } from "../ui";
 import { centsToInput, toCents } from "../../lib/money";
@@ -56,6 +57,8 @@ function useSubmit() {
   return { saving, error, setError, run };
 }
 
+/** A cost back into an input box: blank when zero, so an empty cost field stays empty. */
+const costInput = (cents: number) => (cents ? centsToInput(cents) : "");
 const blankToNull = (v: string) => (v.trim() === "" ? null : v.trim());
 const select = (id: string, value: string, onChange: (v: string) => void, options: Array<[string, string]>) => (
   <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={inputClass}>
@@ -158,37 +161,41 @@ export function SourcingRecordForm({ initial, onSaved, onCancel }: { initial?: S
 }
 
 // --------------------------------------------------------------------------- payment
-export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, onSaved, onCancel }: {
-  recordId: string; currency: string; banks: LedgerAccount[]; defaultDate: string; onSaved: (r: SourcingDetail) => void; onCancel: () => void;
+export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, initial, onSaved, onCancel }: {
+  recordId: string; currency: string; banks: LedgerAccount[]; defaultDate: string; initial?: SourcingPayment; onSaved: (r: SourcingDetail) => void; onCancel: () => void;
 }) {
-  const [date, setDate] = useState(defaultDate);
-  const [amount, setAmount] = useState("");
-  const [type, setType] = useState<SourcingPaymentType>("DEPOSIT");
-  const [method, setMethod] = useState<SourcingPaymentMethod | "">("BANK_TRANSFER");
-  const [bankAccountId, setBankAccountId] = useState("");
-  const [reference, setReference] = useState("");
-  const [notes, setNotes] = useState("");
+  const [date, setDate] = useState(initial ? toInputDate(initial.date) : defaultDate);
+  const [amount, setAmount] = useState(initial ? centsToInput(initial.amountCents) : "");
+  const [type, setType] = useState<SourcingPaymentType>(initial?.type ?? "DEPOSIT");
+  const [method, setMethod] = useState<SourcingPaymentMethod | "">(initial ? initial.method ?? "" : "BANK_TRANSFER");
+  const [bankAccountId, setBankAccountId] = useState(initial?.bankAccount?.id ?? "");
+  const [reference, setReference] = useState(initial?.reference ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const { saving, error, setError, run } = useSubmit();
+  // Keep the saved account selectable even if it has since been deactivated.
+  const paidFromOptions = banks.map((b): [string, string] => [b.id, `${b.code} · ${b.name}`]);
+  if (initial?.bankAccount && !banks.some((b) => b.id === initial.bankAccount!.id)) {
+    paidFromOptions.push([initial.bankAccount.id, `${initial.bankAccount.code} · ${initial.bankAccount.name} (inactive)`]);
+  }
 
   async function submit() {
     const amountCents = toCents(amount);
     if (!amountCents) return setError("Please enter the amount paid, like 1500.00.");
     await run(async () => {
-      onSaved(await api.post<SourcingDetail>(`${BASE}/${recordId}/payments`, {
-        date, amountCents, type, method: method || null, bankAccountId: bankAccountId || null, reference: blankToNull(reference), notes: blankToNull(notes),
-      }));
+      const body = { date, amountCents, type, method: method || null, bankAccountId: bankAccountId || null, reference: blankToNull(reference), notes: blankToNull(notes) };
+      onSaved(initial ? await api.put<SourcingDetail>(`${BASE}/${recordId}/payments/${initial.id}`, body) : await api.post<SourcingDetail>(`${BASE}/${recordId}/payments`, body));
     });
   }
 
   return (
-    <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel="Record payment">
+    <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel={initial ? "Save changes" : "Record payment"}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date paid" htmlFor="sp-date"><input id="sp-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} required /></Field>
         <Field label={`Amount (${currency})`} htmlFor="sp-amount"><input id="sp-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass} placeholder="0.00" required /></Field>
         <Field label="Payment for" htmlFor="sp-type">{select("sp-type", type, (v) => setType(v as SourcingPaymentType), Object.entries(PAYMENT_TYPE_LABELS))}</Field>
         <Field label="Method" htmlFor="sp-method">{select("sp-method", method, (v) => setMethod(v as SourcingPaymentMethod | ""), [["", "Not specified"], ...Object.entries(PAYMENT_METHOD_LABELS)])}</Field>
       </div>
-      <Field label="Paid from (optional)" htmlFor="sp-bank">{select("sp-bank", bankAccountId, setBankAccountId, [["", "Not specified"], ...banks.map((b): [string, string] => [b.id, `${b.code} · ${b.name}`])])}</Field>
+      <Field label="Paid from (optional)" htmlFor="sp-bank">{select("sp-bank", bankAccountId, setBankAccountId, [["", "Not specified"], ...paidFromOptions])}</Field>
       <Field label="Bank reference (optional)" htmlFor="sp-ref"><input id="sp-ref" value={reference} onChange={(e) => setReference(e.target.value)} className={inputClass} maxLength={80} /></Field>
       <Field label="Notes (optional)" htmlFor="sp-notes"><input id="sp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} maxLength={1000} /></Field>
     </FormShell>
@@ -196,26 +203,27 @@ export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, on
 }
 
 // --------------------------------------------------------------------------- inspection
-export function SourcingInspectionForm({ recordId, currency, defaultDate, onSaved, onCancel }: {
-  recordId: string; currency: string; defaultDate: string; onSaved: (r: SourcingDetail) => void; onCancel: () => void;
+export function SourcingInspectionForm({ recordId, currency, defaultDate, initial, onSaved, onCancel }: {
+  recordId: string; currency: string; defaultDate: string; initial?: SourcingInspection; onSaved: (r: SourcingDetail) => void; onCancel: () => void;
 }) {
-  const [date, setDate] = useState(defaultDate);
-  const [inspector, setInspector] = useState("");
-  const [result, setResult] = useState<SourcingInspectionResult>("PENDING");
-  const [cost, setCost] = useState("");
-  const [notes, setNotes] = useState("");
+  const [date, setDate] = useState(initial ? toInputDate(initial.date) : defaultDate);
+  const [inspector, setInspector] = useState(initial?.inspector ?? "");
+  const [result, setResult] = useState<SourcingInspectionResult>(initial?.result ?? "PENDING");
+  const [cost, setCost] = useState(initial ? costInput(initial.costCents) : "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const { saving, error, setError, run } = useSubmit();
 
   async function submit() {
     const costCents = cost.trim() === "" ? 0 : toCents(cost);
     if (costCents === null) return setError("Please enter the inspection cost as an amount, like 250.00.");
     await run(async () => {
-      onSaved(await api.post<SourcingDetail>(`${BASE}/${recordId}/inspections`, { date, inspector: blankToNull(inspector), result, costCents, notes: blankToNull(notes) }));
+      const body = { date, inspector: blankToNull(inspector), result, costCents, notes: blankToNull(notes) };
+      onSaved(initial ? await api.put<SourcingDetail>(`${BASE}/${recordId}/inspections/${initial.id}`, body) : await api.post<SourcingDetail>(`${BASE}/${recordId}/inspections`, body));
     });
   }
 
   return (
-    <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel="Add inspection">
+    <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel={initial ? "Save changes" : "Add inspection"}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Inspection date" htmlFor="si-date"><input id="si-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} required /></Field>
         <Field label={`Inspection cost (${currency})`} htmlFor="si-cost"><input id="si-cost" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} className={inputClass} placeholder="0.00" /></Field>
@@ -228,20 +236,20 @@ export function SourcingInspectionForm({ recordId, currency, defaultDate, onSave
 }
 
 // --------------------------------------------------------------------------- shipment
-export function SourcingShipmentForm({ recordId, currency, onSaved, onCancel }: {
-  recordId: string; currency: string; onSaved: (r: SourcingDetail) => void; onCancel: () => void;
+export function SourcingShipmentForm({ recordId, currency, initial, onSaved, onCancel }: {
+  recordId: string; currency: string; initial?: SourcingShipment; onSaved: (r: SourcingDetail) => void; onCancel: () => void;
 }) {
-  const [method, setMethod] = useState<SourcingShipmentMethod | "">("SEA");
-  const [carrier, setCarrier] = useState("");
-  const [trackingNumber, setTrackingNumber] = useState("");
-  const [shippedDate, setShippedDate] = useState("");
-  const [eta, setEta] = useState("");
-  const [arrivedDate, setArrivedDate] = useState("");
-  const [freight, setFreight] = useState("");
-  const [customs, setCustoms] = useState("");
-  const [insurance, setInsurance] = useState("");
-  const [other, setOther] = useState("");
-  const [notes, setNotes] = useState("");
+  const [method, setMethod] = useState<SourcingShipmentMethod | "">(initial ? initial.method ?? "" : "SEA");
+  const [carrier, setCarrier] = useState(initial?.carrier ?? "");
+  const [trackingNumber, setTrackingNumber] = useState(initial?.trackingNumber ?? "");
+  const [shippedDate, setShippedDate] = useState(toInputDate(initial?.shippedDate));
+  const [eta, setEta] = useState(toInputDate(initial?.eta));
+  const [arrivedDate, setArrivedDate] = useState(toInputDate(initial?.arrivedDate));
+  const [freight, setFreight] = useState(initial ? costInput(initial.freightCostCents) : "");
+  const [customs, setCustoms] = useState(initial ? costInput(initial.customsDutyCents) : "");
+  const [insurance, setInsurance] = useState(initial ? costInput(initial.insuranceCostCents) : "");
+  const [other, setOther] = useState(initial ? costInput(initial.otherCostCents) : "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const { saving, error, setError, run } = useSubmit();
 
   async function submit() {
@@ -249,16 +257,17 @@ export function SourcingShipmentForm({ recordId, currency, onSaved, onCancel }: 
     if (amounts.some((a) => a === null)) return setError("Please enter each cost as an amount, like 480.00.");
     const [freightCostCents, customsDutyCents, insuranceCostCents, otherCostCents] = amounts as number[];
     await run(async () => {
-      onSaved(await api.post<SourcingDetail>(`${BASE}/${recordId}/shipments`, {
+      const body = {
         method: method || null, carrier: blankToNull(carrier), trackingNumber: blankToNull(trackingNumber),
         shippedDate: blankToNull(shippedDate), eta: blankToNull(eta), arrivedDate: blankToNull(arrivedDate),
         freightCostCents, customsDutyCents, insuranceCostCents, otherCostCents, notes: blankToNull(notes),
-      }));
+      };
+      onSaved(initial ? await api.put<SourcingDetail>(`${BASE}/${recordId}/shipments/${initial.id}`, body) : await api.post<SourcingDetail>(`${BASE}/${recordId}/shipments`, body));
     });
   }
 
   return (
-    <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel="Add shipment">
+    <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel={initial ? "Save changes" : "Add shipment"}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Shipping method" htmlFor="ss-method">{select("ss-method", method, (v) => setMethod(v as SourcingShipmentMethod | ""), [["", "Not specified"], ...Object.entries(SHIPMENT_METHOD_LABELS)])}</Field>
         <Field label="Carrier (optional)" htmlFor="ss-carrier"><input id="ss-carrier" value={carrier} onChange={(e) => setCarrier(e.target.value)} className={inputClass} maxLength={120} /></Field>

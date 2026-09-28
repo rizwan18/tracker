@@ -57,6 +57,13 @@ function detailDto(r: RecordWithChildren) {
   };
 }
 
+/** A payment's "paid from" account, when given, must be an active bank/card account in this household. */
+async function assertBankAccount(householdId: string, bankAccountId: string | null | undefined) {
+  if (!bankAccountId) return;
+  const bank = await prisma.ledgerAccount.findFirst({ where: { id: bankAccountId, householdId, isBank: true, isActive: true } });
+  if (!bank) throw new FriendlyError("Please choose a bank account (or card) from your chart of accounts.", 400);
+}
+
 async function findRecord(req: AuthedRequest): Promise<RecordWithChildren> {
   const householdId = householdOf(req);
   const record = await prisma.sourcingRecord.findFirst({ where: { id: req.params.id, householdId }, include: detailInclude });
@@ -144,12 +151,22 @@ router.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const existing = await findRecord(req);
     const data = sourcingPaymentSchema.parse(req.body);
-    if (data.bankAccountId) {
-      const bank = await prisma.ledgerAccount.findFirst({ where: { id: data.bankAccountId, householdId: existing.householdId, isBank: true, isActive: true } });
-      if (!bank) throw new FriendlyError("Please choose a bank account (or card) from your chart of accounts.", 400);
-    }
+    await assertBankAccount(existing.householdId, data.bankAccountId);
     await prisma.sourcingPayment.create({ data: { sourcingRecordId: existing.id, ...data } });
     res.status(201).json(detailDto(await findRecord(req)));
+  })
+);
+
+router.put(
+  "/:id/payments/:paymentId",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const existing = await findRecord(req);
+    const payment = existing.payments.find((p) => p.id === req.params.paymentId);
+    if (!payment) throw new FriendlyError("We couldn't find that payment.", 404);
+    const data = sourcingPaymentSchema.parse(req.body);
+    await assertBankAccount(existing.householdId, data.bankAccountId);
+    await prisma.sourcingPayment.update({ where: { id: payment.id }, data });
+    res.json(detailDto(await findRecord(req)));
   })
 );
 
@@ -175,6 +192,18 @@ router.post(
   })
 );
 
+router.put(
+  "/:id/inspections/:inspectionId",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const existing = await findRecord(req);
+    const inspection = existing.inspections.find((i) => i.id === req.params.inspectionId);
+    if (!inspection) throw new FriendlyError("We couldn't find that inspection.", 404);
+    const data = sourcingInspectionSchema.parse(req.body);
+    await prisma.sourcingInspection.update({ where: { id: inspection.id }, data });
+    res.json(detailDto(await findRecord(req)));
+  })
+);
+
 router.delete(
   "/:id/inspections/:inspectionId",
   asyncHandler(async (req: AuthedRequest, res) => {
@@ -194,6 +223,18 @@ router.post(
     const data = sourcingShipmentSchema.parse(req.body);
     await prisma.sourcingShipment.create({ data: { sourcingRecordId: existing.id, ...data } });
     res.status(201).json(detailDto(await findRecord(req)));
+  })
+);
+
+router.put(
+  "/:id/shipments/:shipmentId",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const existing = await findRecord(req);
+    const shipment = existing.shipments.find((s) => s.id === req.params.shipmentId);
+    if (!shipment) throw new FriendlyError("We couldn't find that shipment.", 404);
+    const data = sourcingShipmentSchema.parse(req.body);
+    await prisma.sourcingShipment.update({ where: { id: shipment.id }, data });
+    res.json(detailDto(await findRecord(req)));
   })
 );
 
