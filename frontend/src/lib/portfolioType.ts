@@ -14,13 +14,14 @@ export const PORTFOLIO_TYPE_INFO: Record<PortfolioType, PortfolioTypeInfo> = {
     label: "Personal Finance",
     description: "Your own income and spending, home, investments and bills.",
     icon: "👤",
-    badge: "bg-[var(--color-sky-tint)] text-[#264a5c]",
+    // Fixed brand colours (not theme tokens) so each badge looks the same wherever it appears.
+    badge: "bg-[var(--brand-green-tint)] text-[var(--brand-green-dark)]",
   },
   COMPANY: {
     label: "Company Finance",
     description: "Income, expenses, property and investments of a company or business.",
     icon: "🏢",
-    badge: "bg-[var(--color-eucalyptus-tint)] text-[var(--color-eucalyptus-dark)]",
+    badge: "bg-[var(--brand-blue-tint)] text-[var(--brand-blue-dark)]",
   },
   TRUST: {
     label: "Trust Finance",

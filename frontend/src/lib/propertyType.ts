@@ -14,16 +14,18 @@ interface PropertyTypeInfo {
 }
 
 // Investment property = green, principal place of residence = blue.
+// Green uses the fixed --brand-green tokens (not --color-eucalyptus) so it stays green, and
+// distinct from PPR blue, even when the blue Company Finance theme is active.
 // Class names are written out in full so Tailwind can see them.
 export const PROPERTY_TYPE_INFO: Record<PropertyType, PropertyTypeInfo> = {
   INVESTMENT: {
     label: "Investment property",
     short: "Investment",
     description: "Rented out (or available to rent) to earn income.",
-    badge: "bg-[var(--color-eucalyptus-tint)] text-[var(--color-eucalyptus-dark)]",
-    accent: "border-l-4 border-l-[var(--color-eucalyptus)]",
-    selected: "border-[var(--color-eucalyptus)] bg-[var(--color-eucalyptus-tint)]",
-    dot: "bg-[var(--color-eucalyptus)]",
+    badge: "bg-[var(--brand-green-tint)] text-[var(--brand-green-dark)]",
+    accent: "border-l-4 border-l-[var(--brand-green)]",
+    selected: "border-[var(--brand-green)] bg-[var(--brand-green-tint)]",
+    dot: "bg-[var(--brand-green)]",
   },
   PPR: {
     label: "Principal place of residence (PPR)",

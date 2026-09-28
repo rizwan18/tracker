@@ -9,7 +9,7 @@ type PropertyRow = DashboardResponse["properties"][number];
 
 // The bar colour matches the property's type (green = investment, blue = PPR).
 const BAR: Record<PropertyType, string> = {
-  INVESTMENT: "var(--color-eucalyptus)",
+  INVESTMENT: "var(--brand-green)", // fixed green, so it stays distinct from PPR blue in the Company theme
   PPR: "var(--color-sky)",
 };
 

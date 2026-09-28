@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { usePortfolio } from "../context/PortfolioContext";
@@ -59,6 +60,18 @@ export function AppShell() {
   const isCompany = active?.type === "COMPANY";
   const primaryNav = isCompany ? COMPANY_NAV : PRIMARY_NAV;
   const mobileNav = isCompany ? COMPANY_MOBILE_NAV : MOBILE_NAV;
+
+  // Company Finance gets its own blue colour theme (see index.css). It's set on <html> rather than
+  // on this component's wrapper so modals, tooltips and the page background pick it up too, and it
+  // is removed on the way out so the login / portfolio-picker pages keep the default green theme.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (isCompany) root.dataset.portfolio = "company";
+    else delete root.dataset.portfolio;
+    return () => {
+      delete root.dataset.portfolio;
+    };
+  }, [isCompany]);
 
   return (
     <div className={`min-h-screen flex ${user?.easyViewEnabled ? "easy-view" : ""}`}>
