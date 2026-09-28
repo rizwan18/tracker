@@ -22,7 +22,7 @@ const detailInclude = {
 
 type RecordWithChildren = Prisma.SourcingRecordGetPayload<{ include: typeof detailInclude }>;
 
-function costDto(r: { quantity: number; unitCostCents: number; currency: string; exchangeRateToAud: number | null }, payments: { amountCents: number }[], inspections: { costCents: number }[], shipments: { freightCostCents: number; customsDutyCents: number; insuranceCostCents: number; otherCostCents: number }[]) {
+function costDto(r: { quantity: number; unitCostCents: number; currency: string; exchangeRateToAud: number | null }, payments: { amountCents: number; feeCents: number }[], inspections: { costCents: number }[], shipments: { freightCostCents: number; customsDutyCents: number; insuranceCostCents: number; otherCostCents: number }[]) {
   const costs = computeSourcingCosts({ quantity: r.quantity, unitCostCents: r.unitCostCents, payments, inspections, shipments });
   return { ...costs, totalCostAudEstCents: toAudEstimateCents(costs.totalCostCents, r.currency, r.exchangeRateToAud), balanceAudEstCents: toAudEstimateCents(costs.balanceCents, r.currency, r.exchangeRateToAud) };
 }
@@ -45,7 +45,7 @@ function detailDto(r: RecordWithChildren) {
     supplierContactName: r.supplierContactName, supplierEmail: r.supplierEmail, supplierPhone: r.supplierPhone, supplierWebsite: r.supplierWebsite, supplierAddress: r.supplierAddress,
     notes: r.notes,
     payments: r.payments.map((p) => ({
-      id: p.id, date: iso(p.date), amountCents: p.amountCents, type: p.type, method: p.method,
+      id: p.id, date: iso(p.date), amountCents: p.amountCents, feeCents: p.feeCents, type: p.type, method: p.method,
       bankAccount: p.bankAccount, reference: p.reference, notes: p.notes,
     })),
     inspections: r.inspections.map((i) => ({ id: i.id, date: iso(i.date), inspector: i.inspector, result: i.result, costCents: i.costCents, notes: i.notes })),

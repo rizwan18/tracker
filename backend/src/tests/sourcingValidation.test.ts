@@ -51,6 +51,13 @@ describe("child record schemas", () => {
     expect(sourcingPaymentSchema.safeParse({ amountCents: 100 }).success).toBe(false); // date is required
   });
 
+  it("treats the transaction fee as optional (default 0), whole cents, and never negative", () => {
+    expect(sourcingPaymentSchema.parse({ date: "2026-09-01", amountCents: 50000 }).feeCents).toBe(0);
+    expect(sourcingPaymentSchema.parse({ date: "2026-09-01", amountCents: 50000, feeCents: 2500 }).feeCents).toBe(2500);
+    expect(sourcingPaymentSchema.safeParse({ date: "2026-09-01", amountCents: 50000, feeCents: -1 }).success).toBe(false);
+    expect(sourcingPaymentSchema.safeParse({ date: "2026-09-01", amountCents: 50000, feeCents: 12.5 }).success).toBe(false);
+  });
+
   it("lets an inspection be free (cost defaults to 0) and rejects a negative cost", () => {
     expect(sourcingInspectionSchema.parse({ date: "2026-09-01" }).costCents).toBe(0);
     expect(sourcingInspectionSchema.safeParse({ date: "2026-09-01", costCents: -1 }).success).toBe(false);

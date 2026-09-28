@@ -166,6 +166,7 @@ export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, in
 }) {
   const [date, setDate] = useState(initial ? toInputDate(initial.date) : defaultDate);
   const [amount, setAmount] = useState(initial ? centsToInput(initial.amountCents) : "");
+  const [fee, setFee] = useState(initial ? costInput(initial.feeCents) : "");
   const [type, setType] = useState<SourcingPaymentType>(initial?.type ?? "DEPOSIT");
   const [method, setMethod] = useState<SourcingPaymentMethod | "">(initial ? initial.method ?? "" : "BANK_TRANSFER");
   const [bankAccountId, setBankAccountId] = useState(initial?.bankAccount?.id ?? "");
@@ -181,8 +182,10 @@ export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, in
   async function submit() {
     const amountCents = toCents(amount);
     if (!amountCents) return setError("Please enter the amount paid, like 1500.00.");
+    const feeCents = fee.trim() === "" ? 0 : toCents(fee);
+    if (feeCents === null) return setError("Please enter the transaction fee as an amount, like 25.00.");
     await run(async () => {
-      const body = { date, amountCents, type, method: method || null, bankAccountId: bankAccountId || null, reference: blankToNull(reference), notes: blankToNull(notes) };
+      const body = { date, amountCents, feeCents, type, method: method || null, bankAccountId: bankAccountId || null, reference: blankToNull(reference), notes: blankToNull(notes) };
       onSaved(initial ? await api.put<SourcingDetail>(`${BASE}/${recordId}/payments/${initial.id}`, body) : await api.post<SourcingDetail>(`${BASE}/${recordId}/payments`, body));
     });
   }
@@ -195,6 +198,13 @@ export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, in
         <Field label="Payment for" htmlFor="sp-type">{select("sp-type", type, (v) => setType(v as SourcingPaymentType), Object.entries(PAYMENT_TYPE_LABELS))}</Field>
         <Field label="Method" htmlFor="sp-method">{select("sp-method", method, (v) => setMethod(v as SourcingPaymentMethod | ""), [["", "Not specified"], ...Object.entries(PAYMENT_METHOD_LABELS)])}</Field>
       </div>
+      <Field
+        label={`Transaction fee (${currency}, optional)`}
+        htmlFor="sp-fee"
+        hint="Any bank, card or transfer fee charged on top of this payment. It isn't part of the payment to the supplier — it's added to the total cost of this order."
+      >
+        <input id="sp-fee" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} className={inputClass} placeholder="0.00" />
+      </Field>
       <Field label="Paid from (optional)" htmlFor="sp-bank">{select("sp-bank", bankAccountId, setBankAccountId, [["", "Not specified"], ...paidFromOptions])}</Field>
       <Field label="Bank reference (optional)" htmlFor="sp-ref"><input id="sp-ref" value={reference} onChange={(e) => setReference(e.target.value)} className={inputClass} maxLength={80} /></Field>
       <Field label="Notes (optional)" htmlFor="sp-notes"><input id="sp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} maxLength={1000} /></Field>

@@ -39,9 +39,32 @@ describe("sourcing cost arithmetic", () => {
     expect(costs.balanceCents).toBe(costs.totalCostCents - 70000);
   });
 
+  it("adds transaction fees to the total cost without changing what's owed to the supplier", () => {
+    const base = { quantity: 100, unitCostCents: 1000, shipments: [], inspections: [] }; // $1,000 goods
+    const noFee = computeSourcingCosts({ ...base, payments: [{ amountCents: 40000 }] });
+    const withFee = computeSourcingCosts({ ...base, payments: [{ amountCents: 40000, feeCents: 2500 }] });
+
+    expect(withFee.transactionFeeCents).toBe(2500);
+    expect(withFee.totalCostCents).toBe(noFee.totalCostCents + 2500); // extra cost of the order
+    expect(withFee.paidCents).toBe(42500); // cash out includes the fee
+    expect(withFee.balanceCents).toBe(noFee.balanceCents); // supplier balance is untouched: $600 still to pay
+    expect(withFee.balanceCents).toBe(60000);
+  });
+
+  it("sums fees across several payments, and treats a missing fee as zero", () => {
+    const costs = computeSourcingCosts({
+      quantity: 1, unitCostCents: 100000, shipments: [], inspections: [],
+      payments: [{ amountCents: 30000, feeCents: 1500 }, { amountCents: 70000 }, { amountCents: 0, feeCents: 500 }],
+    });
+    expect(costs.transactionFeeCents).toBe(2000);
+    expect(costs.totalCostCents).toBe(102000);
+    expect(costs.paidCents).toBe(102000);
+    expect(costs.balanceCents).toBe(0); // fully paid, fees included
+  });
+
   it("treats an order with no shipments/inspections/payments as goods cost only, fully outstanding", () => {
     const costs = computeSourcingCosts({ quantity: 10, unitCostCents: 500, shipments: [], inspections: [], payments: [] });
-    expect(costs).toEqual({ goodsCostCents: 5000, shippingCostCents: 0, inspectionCostCents: 0, totalCostCents: 5000, paidCents: 0, balanceCents: 5000 });
+    expect(costs).toEqual({ goodsCostCents: 5000, shippingCostCents: 0, inspectionCostCents: 0, transactionFeeCents: 0, totalCostCents: 5000, paidCents: 0, balanceCents: 5000 });
   });
 });
 

@@ -154,8 +154,8 @@ export default function SourcingDetailPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatTile label="Goods" value={money(r.goodsCostCents)} help={`${r.quantity} × ${money(r.unitCostCents)}`} />
-        <StatTile label="Total cost" value={money(r.totalCostCents)} tone="accent" help="Goods + shipping + inspections" />
-        <StatTile label="Paid" value={money(r.paidCents)} tone="positive" />
+        <StatTile label="Total cost" value={money(r.totalCostCents)} tone="accent" help="Goods, shipping, inspections and fees" />
+        <StatTile label="Paid" value={money(r.paidCents)} tone="positive" help="Payments plus transaction fees" />
         <StatTile label={r.balanceCents < 0 ? "Overpaid" : "Still to pay"} value={money(Math.abs(r.balanceCents))} tone={r.balanceCents > 0 ? "negative" : "neutral"} />
       </div>
       {r.currency !== "AUD" && (
@@ -182,6 +182,7 @@ export default function SourcingDetailPage() {
                 <Row label="Delivered">{r.deliveredDate && formatDate(r.deliveredDate)}</Row>
                 <Row label="Shipping & duties">{money(r.shippingCostCents)}</Row>
                 <Row label="Inspections">{money(r.inspectionCostCents)}</Row>
+                <Row label="Transaction fees">{r.transactionFeeCents > 0 ? money(r.transactionFeeCents) : null}</Row>
               </dl>
             </Card>
             <Card>
@@ -222,7 +223,10 @@ export default function SourcingDetailPage() {
                         {[p.method && PAYMENT_METHOD_LABELS[p.method], p.bankAccount && `${p.bankAccount.code} ${p.bankAccount.name}`, p.reference && `Ref ${p.reference}`, p.notes].filter(Boolean).join(" · ")}
                       </p>
                     </div>
-                    <span className="font-medium">{money(p.amountCents)}</span>
+                    <div className="text-right">
+                      <p className="font-medium">{money(p.amountCents)}</p>
+                      {p.feeCents > 0 && <p className="text-xs text-[var(--color-ink-soft)]">+ {money(p.feeCents)} fee</p>}
+                    </div>
                     <Button variant="ghost" size="sm" onClick={() => openDialog("payment", p.id)}>Edit</Button>
                     <Button variant="ghost" size="sm" onClick={() => confirm("Delete this payment?") && act(() => api.delete<SourcingDetail>(`/business/sourcing/${r.id}/payments/${p.id}`))}>Delete</Button>
                   </li>

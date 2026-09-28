@@ -173,6 +173,7 @@ export interface SourcingSummary {
   goodsCostCents: number;
   shippingCostCents: number;
   inspectionCostCents: number;
+  transactionFeeCents: number;
   totalCostCents: number;
   paidCents: number;
   balanceCents: number;
@@ -188,6 +189,8 @@ export interface SourcingPayment {
   id: string;
   date: string;
   amountCents: number;
+  /** Transaction fee on top of the payment — an extra cost, not part of amountCents. */
+  feeCents: number;
   type: SourcingPaymentType;
   method: SourcingPaymentMethod | null;
   bankAccount: { id: string; code: string; name: string } | null;

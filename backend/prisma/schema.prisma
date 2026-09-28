@@ -692,7 +692,10 @@ model SourcingPayment {
   sourcingRecordId String
   sourcingRecord   SourcingRecord @relation(fields: [sourcingRecordId], references: [id], onDelete: Cascade)
   date             DateTime
-  amountCents      Int            // in the order's currency
+  amountCents      Int            // in the order's currency — what goes to the supplier
+  /// Bank / card / transfer fee charged on top of the payment. Not part of `amountCents` (it doesn't
+  /// reduce what's owed to the supplier) but it is an extra cost of the order, so it adds to the total.
+  feeCents         Int            @default(0)
   type             String         @default("DEPOSIT") // DEPOSIT | PROGRESS | BALANCE | FULL | OTHER
   method           String?        // BANK_TRANSFER | CREDIT_CARD | PAYPAL | CASH | OTHER
   bankAccountId    String?

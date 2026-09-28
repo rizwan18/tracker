@@ -315,6 +315,7 @@ export const sourcingRecordSchema = z
 export const sourcingPaymentSchema = z.object({
   date: z.coerce.date(),
   amountCents: z.number().int("Amounts are in whole cents.").min(1, "The amount must be more than zero.").max(MAX_ENTRY_CENTS),
+  feeCents: z.number().int("Amounts are in whole cents.").min(0, "The fee can't be negative.").max(MAX_ENTRY_CENTS).default(0),
   type: z.enum(SOURCING_PAYMENT_TYPES).default("DEPOSIT"),
   method: z.enum(SOURCING_PAYMENT_METHODS).optional().nullable(),
   bankAccountId: z.string().optional().nullable(),
