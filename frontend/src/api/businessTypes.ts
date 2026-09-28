@@ -143,3 +143,105 @@ export interface ManualJournal {
   lines: Array<{ accountCode: string; accountName: string; debitCents: number; creditCents: number; memo: string | null }>;
   totalCents: number;
 }
+
+// ---------------------------------------------------------------------------
+// Sourcing (Company Finance)
+// ---------------------------------------------------------------------------
+export type SourcingOrigin = "OVERSEAS" | "LOCAL";
+export type SourcingStatus = "ENQUIRY" | "ORDERED" | "IN_PRODUCTION" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+export type SourcingPaymentType = "DEPOSIT" | "PROGRESS" | "BALANCE" | "FULL" | "OTHER";
+export type SourcingPaymentMethod = "BANK_TRANSFER" | "CREDIT_CARD" | "PAYPAL" | "CASH" | "OTHER";
+export type SourcingInspectionResult = "PENDING" | "PASSED" | "FAILED" | "PASSED_WITH_NOTES";
+export type SourcingShipmentMethod = "SEA" | "AIR" | "COURIER" | "ROAD" | "OTHER";
+
+/** One row in the Sourcing list. Money is whole cents in `currency` (…AudEstCents are estimates in AUD). */
+export interface SourcingSummary {
+  id: string;
+  origin: SourcingOrigin;
+  status: SourcingStatus;
+  reference: string | null;
+  itemDescription: string;
+  quantity: number;
+  unitCostCents: number;
+  currency: string;
+  exchangeRateToAud: number | null;
+  orderDate: string | null;
+  expectedDate: string | null;
+  deliveredDate: string | null;
+  supplierName: string;
+  supplierCountry: string | null;
+  goodsCostCents: number;
+  shippingCostCents: number;
+  inspectionCostCents: number;
+  totalCostCents: number;
+  paidCents: number;
+  balanceCents: number;
+  totalCostAudEstCents: number;
+  balanceAudEstCents: number;
+  paymentCount: number;
+  inspectionCount: number;
+  shipmentCount: number;
+  documentCount: number;
+}
+
+export interface SourcingPayment {
+  id: string;
+  date: string;
+  amountCents: number;
+  type: SourcingPaymentType;
+  method: SourcingPaymentMethod | null;
+  bankAccount: { id: string; code: string; name: string } | null;
+  reference: string | null;
+  notes: string | null;
+}
+
+export interface SourcingInspection {
+  id: string;
+  date: string;
+  inspector: string | null;
+  result: SourcingInspectionResult;
+  costCents: number;
+  notes: string | null;
+}
+
+export interface SourcingShipment {
+  id: string;
+  method: SourcingShipmentMethod | null;
+  carrier: string | null;
+  trackingNumber: string | null;
+  shippedDate: string | null;
+  eta: string | null;
+  arrivedDate: string | null;
+  freightCostCents: number;
+  customsDutyCents: number;
+  insuranceCostCents: number;
+  otherCostCents: number;
+  notes: string | null;
+}
+
+export interface SourcingDocument {
+  id: string;
+  fileName: string;
+  fileType: string;
+  createdAt: string;
+}
+
+export interface SourcingDetail extends SourcingSummary {
+  supplierContactName: string | null;
+  supplierEmail: string | null;
+  supplierPhone: string | null;
+  supplierWebsite: string | null;
+  supplierAddress: string | null;
+  notes: string | null;
+  payments: SourcingPayment[];
+  inspections: SourcingInspection[];
+  shipments: SourcingShipment[];
+  documents: SourcingDocument[];
+}
+
+export interface SourcingTotals {
+  openCount: number;
+  totalCostAudEstCents: number;
+  paidAudEstCents: number;
+  balanceAudEstCents: number;
+}

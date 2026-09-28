@@ -18,6 +18,8 @@ import BusinessEntriesPage from "./pages/business/BusinessEntriesPage";
 import BusinessAccountsPage from "./pages/business/BusinessAccountsPage";
 import BusinessJournalPage from "./pages/business/BusinessJournalPage";
 import BusinessReportsPage from "./pages/business/BusinessReportsPage";
+import SourcingPage from "./pages/business/SourcingPage";
+import SourcingDetailPage from "./pages/business/SourcingDetailPage";
 import MoneyPage from "./pages/MoneyPage";
 import PropertiesPage from "./pages/PropertiesPage";
 import PropertyDetailPage from "./pages/PropertyDetailPage";
@@ -68,6 +70,8 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/business/sales" element={<RequireCompany><BusinessEntriesPage kind="INCOME" /></RequireCompany>} />
               <Route path="/business/expenses" element={<RequireCompany><BusinessEntriesPage kind="EXPENSE" /></RequireCompany>} />
+              <Route path="/business/sourcing" element={<RequireCompany><SourcingPage /></RequireCompany>} />
+              <Route path="/business/sourcing/:id" element={<RequireCompany><SourcingDetailPage /></RequireCompany>} />
               <Route path="/business/reports" element={<RequireCompany><BusinessReportsPage /></RequireCompany>} />
               <Route path="/business/accounts" element={<RequireCompany><BusinessAccountsPage /></RequireCompany>} />
               <Route path="/business/journal" element={<RequireCompany><BusinessJournalPage /></RequireCompany>} />
