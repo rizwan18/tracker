@@ -31,7 +31,7 @@ router.post(
     if (!req.householdId) throw new FriendlyError("Please finish setting up your household first.", 400);
     if (!req.file) throw new FriendlyError("Please choose a file to upload.");
 
-    const { transactionId, propertyId, investmentId, dividendId, capitalGainDisposalId, sourcingRecordId } = req.body as Record<string, string | undefined>;
+    const { transactionId, propertyId, investmentId, dividendId, capitalGainDisposalId, sourcingRecordId, sourcingPaymentId, sourcingShipmentId } = req.body as Record<string, string | undefined>;
 
     // A document may only be attached to a record in the caller's own household. Checked before
     // anything is uploaded, so a bad id can't leave an orphaned file in blob storage.
@@ -43,6 +43,10 @@ router.post(
       dividendId ? prisma.dividend.count({ where: { id: dividendId, investment: { householdId } } }) : 1,
       capitalGainDisposalId ? prisma.capitalGainDisposal.count({ where: { id: capitalGainDisposalId, householdId } }) : 1,
       sourcingRecordId ? prisma.sourcingRecord.count({ where: { id: sourcingRecordId, householdId } }) : 1,
+      // An invoice attached from a Payment or Shipment tab (optional) — owned check goes through
+      // the parent sourcing record, since these two child rows have no householdId of their own.
+      sourcingPaymentId ? prisma.sourcingPayment.count({ where: { id: sourcingPaymentId, sourcingRecord: { householdId } } }) : 1,
+      sourcingShipmentId ? prisma.sourcingShipment.count({ where: { id: sourcingShipmentId, sourcingRecord: { householdId } } }) : 1,
     ]);
     if (owned.some((n) => n === 0)) throw new FriendlyError("We couldn't find the item you're attaching this document to.", 404);
 
@@ -68,6 +72,8 @@ router.post(
         dividendId: dividendId || null,
         capitalGainDisposalId: capitalGainDisposalId || null,
         sourcingRecordId: sourcingRecordId || null,
+        sourcingPaymentId: sourcingPaymentId || null,
+        sourcingShipmentId: sourcingShipmentId || null,
       },
     });
     res.status(201).json(document);
