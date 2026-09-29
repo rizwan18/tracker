@@ -196,6 +196,8 @@ export interface SourcingPayment {
   bankAccount: { id: string; code: string; name: string } | null;
   reference: string | null;
   notes: string | null;
+  /** Supplier invoices/receipts attached to this payment (optional). */
+  documents: SourcingDocument[];
 }
 
 export interface SourcingInspection {
@@ -220,6 +222,8 @@ export interface SourcingShipment {
   insuranceCostCents: number;
   otherCostCents: number;
   notes: string | null;
+  /** Shipping paperwork (e.g. freight invoice, customs docs) attached to this shipment (optional). */
+  documents: SourcingDocument[];
 }
 
 export interface SourcingDocument {

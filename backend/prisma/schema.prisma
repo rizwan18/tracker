@@ -504,6 +504,14 @@ model Document {
   capitalGainDisposal   CapitalGainDisposal? @relation(fields: [capitalGainDisposalId], references: [id])
   sourcingRecordId String?
   sourcingRecord   SourcingRecord? @relation(fields: [sourcingRecordId], references: [id])
+  /// Optional: when this document is a supplier invoice (or similar) for one specific payment
+  /// or shipment on a sourcing order, rather than the order in general. Independent of
+  /// sourcingRecordId above (a document attached this way is still set to belong to the order
+  /// too, so it also appears in the order's overall Documents list).
+  sourcingPaymentId String?
+  sourcingPayment   SourcingPayment? @relation(fields: [sourcingPaymentId], references: [id])
+  sourcingShipmentId String?
+  sourcingShipment   SourcingShipment? @relation(fields: [sourcingShipmentId], references: [id])
   createdAt     DateTime @default(now())
 
   @@index([householdId])
@@ -704,6 +712,9 @@ model SourcingPayment {
   notes            String?
   createdAt        DateTime       @default(now())
 
+  /// Supplier invoices/receipts attached to this specific payment (optional).
+  documents        Document[]
+
   @@index([sourcingRecordId])
   @@index([bankAccountId])
 }
@@ -742,6 +753,9 @@ model SourcingShipment {
   otherCostCents      Int            @default(0)
   notes               String?
   createdAt           DateTime       @default(now())
+
+  /// Shipping paperwork (e.g. freight invoice, customs docs) attached to this specific shipment (optional).
+  documents           Document[]
 
   @@index([sourcingRecordId])
 }

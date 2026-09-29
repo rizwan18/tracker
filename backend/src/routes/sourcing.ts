@@ -13,11 +13,17 @@ router.use(requireAuth, requireCompanyPortfolio);
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
+// Shared column list for a document reference (used at record, payment and shipment level).
+const documentSelect = { id: true, fileName: true, fileType: true, createdAt: true } satisfies Prisma.DocumentSelect;
+
 const detailInclude = {
-  payments: { orderBy: { date: "desc" as const }, include: { bankAccount: { select: { id: true, code: true, name: true } } } },
+  payments: {
+    orderBy: { date: "desc" as const },
+    include: { bankAccount: { select: { id: true, code: true, name: true } }, documents: { select: documentSelect } },
+  },
   inspections: { orderBy: { date: "desc" as const } },
-  shipments: { orderBy: { createdAt: "desc" as const } },
-  documents: { select: { id: true, fileName: true, fileType: true, createdAt: true } },
+  shipments: { orderBy: { createdAt: "desc" as const }, include: { documents: { select: documentSelect } } },
+  documents: { select: documentSelect },
 } satisfies Prisma.SourcingRecordInclude;
 
 type RecordWithChildren = Prisma.SourcingRecordGetPayload<{ include: typeof detailInclude }>;
@@ -47,11 +53,13 @@ function detailDto(r: RecordWithChildren) {
     payments: r.payments.map((p) => ({
       id: p.id, date: iso(p.date), amountCents: p.amountCents, feeCents: p.feeCents, type: p.type, method: p.method,
       bankAccount: p.bankAccount, reference: p.reference, notes: p.notes,
+      documents: p.documents.map((d) => ({ id: d.id, fileName: d.fileName, fileType: d.fileType, createdAt: d.createdAt.toISOString() })),
     })),
     inspections: r.inspections.map((i) => ({ id: i.id, date: iso(i.date), inspector: i.inspector, result: i.result, costCents: i.costCents, notes: i.notes })),
     shipments: r.shipments.map((s) => ({
       id: s.id, method: s.method, carrier: s.carrier, trackingNumber: s.trackingNumber, shippedDate: iso(s.shippedDate), eta: iso(s.eta), arrivedDate: iso(s.arrivedDate),
       freightCostCents: s.freightCostCents, customsDutyCents: s.customsDutyCents, insuranceCostCents: s.insuranceCostCents, otherCostCents: s.otherCostCents, notes: s.notes,
+      documents: s.documents.map((d) => ({ id: d.id, fileName: d.fileName, fileType: d.fileType, createdAt: d.createdAt.toISOString() })),
     })),
     documents: r.documents.map((d) => ({ id: d.id, fileName: d.fileName, fileType: d.fileType, createdAt: d.createdAt.toISOString() })),
   };

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../../api/client";
-import type { SourcingDetail } from "../../api/businessTypes";
+import type { SourcingDetail, SourcingDocument } from "../../api/businessTypes";
 import { useBusinessBasics } from "../../hooks/useBusiness";
 import { Button, Card, EmptyState, SectionHeading, StatTile, TabPanel, Tabs } from "../../components/ui";
 import { Modal } from "../../components/Modal";
@@ -13,6 +13,49 @@ import {
 
 type Tab = "overview" | "payments" | "inspections" | "shipments" | "documents";
 type Dialog = "edit" | "payment" | "inspection" | "shipment" | null;
+
+/** A ghost-styled "+ Attach invoice" button with its own hidden file input, for use inline on a
+ * payment or shipment row. Optional — a payment or shipment is complete without one. */
+function AttachInvoiceButton({ uploading, onSelect }: { uploading: boolean; onSelect: (file: File) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={ref}
+        type="file"
+        accept="application/pdf,image/jpeg,image/png"
+        className="sr-only"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onSelect(file);
+          e.target.value = "";
+        }}
+      />
+      <Button variant="ghost" size="sm" disabled={uploading} onClick={() => ref.current?.click()}>
+        {uploading ? "Uploading…" : "📎 Attach invoice"}
+      </Button>
+    </>
+  );
+}
+
+/** The small file chips shown under a payment or shipment once one or more documents are attached. */
+function DocumentChips({ documents, onDownload, onDelete }: { documents: SourcingDocument[]; onDownload: (id: string, fileName: string) => void; onDelete: (id: string) => void }) {
+  if (documents.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1.5">
+      {documents.map((d) => (
+        <span key={d.id} className="inline-flex items-center gap-1.5 text-xs rounded-full bg-[var(--color-paper-dim)] pl-2.5 pr-1.5 py-1">
+          <button type="button" className="text-[var(--color-eucalyptus)] font-medium max-w-[10rem] truncate" onClick={() => onDownload(d.id, d.fileName)} title={`Download ${d.fileName}`}>
+            📄 {d.fileName}
+          </button>
+          <button type="button" aria-label={`Remove ${d.fileName}`} className="text-[var(--color-ink-soft)] hover:text-[var(--color-brick)] leading-none" onClick={() => onDelete(d.id)}>
+            ✕
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   if (children === null || children === undefined || children === "") return null;
@@ -34,7 +77,9 @@ export default function SourcingDetailPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [dialog, setDialog] = useState<Dialog>(null);
   const [itemId, setItemId] = useState<string | null>(null); // the payment/inspection/shipment being edited, if any
-  const [uploading, setUploading] = useState(false);
+  // Which upload is in flight, if any — "record" for the Documents tab, or "payment:<id>" /
+  // "shipment:<id>" for an invoice attached inline to one payment or shipment row.
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -95,19 +140,23 @@ export default function SourcingDetailPage() {
     });
   }
 
-  async function uploadFile(file: File) {
-    setUploading(true);
+  // `extra` optionally scopes the document to one payment or shipment (an invoice for that item
+  // specifically); it's always also attached to the record as a whole, so it appears in the
+  // Documents tab either way.
+  async function uploadFile(file: File, key: string, extra: Record<string, string> = {}) {
+    setUploadingKey(key);
     setActionError(null);
     try {
       const form = new FormData();
       form.append("file", file);
       form.append("sourcingRecordId", r.id);
+      for (const [k, v] of Object.entries(extra)) form.append(k, v);
       await api.upload("/documents", form);
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "We couldn't upload that file.");
     } finally {
-      setUploading(false);
+      setUploadingKey(null);
       if (fileInput.current) fileInput.current.value = "";
     }
   }
@@ -121,6 +170,13 @@ export default function SourcingDetailPage() {
       a.download = fileName;
       a.click();
       URL.revokeObjectURL(url);
+    });
+  }
+
+  async function deleteDocument(docId: string) {
+    await act(async () => {
+      await api.delete(`/documents/${docId}`);
+      await load();
     });
   }
 
@@ -222,11 +278,13 @@ export default function SourcingDetailPage() {
                       <p className="text-xs text-[var(--color-ink-soft)]">
                         {[p.method && PAYMENT_METHOD_LABELS[p.method], p.bankAccount && `${p.bankAccount.code} ${p.bankAccount.name}`, p.reference && `Ref ${p.reference}`, p.notes].filter(Boolean).join(" · ")}
                       </p>
+                      <DocumentChips documents={p.documents} onDownload={downloadDocument} onDelete={deleteDocument} />
                     </div>
                     <div className="text-right">
                       <p className="font-medium">{money(p.amountCents)}</p>
                       {p.feeCents > 0 && <p className="text-xs text-[var(--color-ink-soft)]">+ {money(p.feeCents)} fee</p>}
                     </div>
+                    <AttachInvoiceButton uploading={uploadingKey === `payment:${p.id}`} onSelect={(file) => uploadFile(file, `payment:${p.id}`, { sourcingPaymentId: p.id })} />
                     <Button variant="ghost" size="sm" onClick={() => openDialog("payment", p.id)}>Edit</Button>
                     <Button variant="ghost" size="sm" onClick={() => confirm("Delete this payment?") && act(() => api.delete<SourcingDetail>(`/business/sourcing/${r.id}/payments/${p.id}`))}>Delete</Button>
                   </li>
@@ -284,8 +342,11 @@ export default function SourcingDetailPage() {
                       </div>
                       <div className="text-right">
                         <p className="font-medium">{money(total)}</p>
-                        <Button variant="ghost" size="sm" onClick={() => openDialog("shipment", s.id)}>Edit</Button>
-                        <Button variant="ghost" size="sm" onClick={() => confirm("Delete this shipment?") && act(() => api.delete<SourcingDetail>(`/business/sourcing/${r.id}/shipments/${s.id}`))}>Delete</Button>
+                        <div className="mt-1 flex flex-wrap justify-end gap-1">
+                          <AttachInvoiceButton uploading={uploadingKey === `shipment:${s.id}`} onSelect={(file) => uploadFile(file, `shipment:${s.id}`, { sourcingShipmentId: s.id })} />
+                          <Button variant="ghost" size="sm" onClick={() => openDialog("shipment", s.id)}>Edit</Button>
+                          <Button variant="ghost" size="sm" onClick={() => confirm("Delete this shipment?") && act(() => api.delete<SourcingDetail>(`/business/sourcing/${r.id}/shipments/${s.id}`))}>Delete</Button>
+                        </div>
                       </div>
                     </div>
                     <dl className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-x-4 text-sm">
@@ -295,6 +356,7 @@ export default function SourcingDetailPage() {
                       <div><dt className="text-[var(--color-ink-soft)]">Other</dt><dd>{money(s.otherCostCents)}</dd></div>
                     </dl>
                     {s.notes && <p className="mt-2 text-sm text-[var(--color-ink-soft)]">{s.notes}</p>}
+                    <DocumentChips documents={s.documents} onDownload={downloadDocument} onDelete={deleteDocument} />
                   </Card>
                 );
               })}
@@ -306,8 +368,8 @@ export default function SourcingDetailPage() {
       {tab === "documents" && (
         <TabPanel id="documents">
           <div className="flex justify-end">
-            <input ref={fileInput} type="file" accept="application/pdf,image/jpeg,image/png" className="sr-only" id="so-upload" onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])} />
-            <Button disabled={uploading} onClick={() => fileInput.current?.click()}>{uploading ? "Uploading…" : "+ Upload document"}</Button>
+            <input ref={fileInput} type="file" accept="application/pdf,image/jpeg,image/png" className="sr-only" id="so-upload" onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0], "record")} />
+            <Button disabled={uploadingKey === "record"} onClick={() => fileInput.current?.click()}>{uploadingKey === "record" ? "Uploading…" : "+ Upload document"}</Button>
           </div>
           {r.documents.length === 0 ? (
             <EmptyState title="No documents yet" description="Attach supplier invoices, quotes, inspection reports or shipping paperwork (PDF, JPG or PNG, up to 15 MB)." />
@@ -321,7 +383,7 @@ export default function SourcingDetailPage() {
                       <p className="text-xs text-[var(--color-ink-soft)]">Added {formatDate(d.createdAt)}</p>
                     </div>
                     <Button variant="secondary" size="sm" onClick={() => downloadDocument(d.id, d.fileName)}>Download</Button>
-                    <Button variant="ghost" size="sm" onClick={() => confirm(`Delete ${d.fileName}?`) && act(async () => { await api.delete(`/documents/${d.id}`); await load(); })}>Delete</Button>
+                    <Button variant="ghost" size="sm" onClick={() => confirm(`Delete ${d.fileName}?`) && deleteDocument(d.id)}>Delete</Button>
                   </li>
                 ))}
               </ul>
