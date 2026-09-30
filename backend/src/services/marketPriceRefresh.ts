@@ -6,17 +6,21 @@
  * (see InvestmentsPage.tsx) — so a slow or failed provider call never blocks the initial page
  * display. This function itself never throws: a failure for one ticker is logged and left
  * untouched, and never prevents other tickers from being refreshed.
+ *
+ * Prices are also fetched outside trading hours (evenings, weekends) — at most once every 24 hours
+ * per holding — so the database always holds the last available market price.
  */
 import { prisma } from "../lib/prisma";
 import { STOCK_TYPES } from "../lib/constants";
 import { getLatestPrice, MarketDataError, toProviderTicker } from "../lib/marketData";
-import { isMarketOpen, toMarket } from "../lib/marketHours";
+import { toMarket } from "../lib/marketHours";
+import { isPriceRefreshDue } from "../lib/priceRefreshPolicy";
 
-// Per-holding floor between provider calls. Persisted on the row itself (marketPriceUpdatedAt)
-// rather than an in-memory cache, so it holds even across serverless instances/cold starts —
-// this is what stops a user repeatedly refreshing the page from generating uncontrolled
-// provider traffic, on top of never calling the provider at all outside trading hours.
-const MIN_REFRESH_INTERVAL_MS = 60 * 1000;
+// How often each holding may call the provider (once a minute while its exchange is open, once
+// every 24 hours while it is closed) is decided by lib/priceRefreshPolicy.ts, measured from the
+// marketPriceUpdatedAt stored on the row itself rather than an in-memory cache, so it holds even
+// across serverless instances/cold starts — this is what stops a user repeatedly refreshing the
+// page from generating uncontrolled provider traffic.
 
 interface RefreshCandidate {
   id: string;
@@ -32,12 +36,7 @@ export async function refreshMarketPrices(householdId: string): Promise<void> {
     select: { id: true, ticker: true, market: true, marketPriceUpdatedAt: true },
   });
 
-  const due = candidates.filter((inv) => {
-    if (!inv.ticker) return false;
-    if (!isMarketOpen(toMarket(inv.market), now)) return false; // closed market: never call the provider
-    if (inv.marketPriceUpdatedAt && now.getTime() - inv.marketPriceUpdatedAt.getTime() < MIN_REFRESH_INTERVAL_MS) return false; // throttled
-    return true;
-  });
+  const due = candidates.filter((inv) => !!inv.ticker && isPriceRefreshDue(toMarket(inv.market), inv.marketPriceUpdatedAt, now));
   if (due.length === 0) return;
 
   // Dedupe by provider ticker: two holdings of the same security share one provider call.

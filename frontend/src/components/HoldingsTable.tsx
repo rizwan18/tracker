@@ -17,10 +17,11 @@ const gainLossCls = (n: number) => (n >= 0 ? "text-[var(--color-eucalyptus)]" : 
  * Market Price/Value come from the database (Investment.marketPrice, set by
  * POST /investments/refresh-market-prices — see InvestmentsPage, which fires that once after
  * this table has already rendered from the stored values, and marketPriceRefresh.ts on the
- * backend, which only calls the market-data provider while the exchange is open). Each row
- * shows when that price was last *successfully* refreshed; a closed market or a failed refresh
- * simply leaves the previous stored price and timestamp in place. Before a holding has ever
- * been successfully refreshed — including over a weekend, when a refresh can't run at all —
+ * backend, which refreshes at most once a minute while the exchange is open and at most once
+ * every 24 hours while it is closed, so evenings and weekends still get a saved price). Each row
+ * shows when that price was last *successfully* refreshed; a failed refresh simply leaves the
+ * previous stored price and timestamp in place. Before a holding has ever been successfully
+ * refreshed —
  * Market Price falls back to its last recorded valuation price instead of a blank dash, labelled
  * "Recorded" rather than "As at" so it isn't mistaken for a live quote. Purchase Price/Value come
  * from the investment's cost base (summary.costBase, which includes brokerage — see
@@ -42,8 +43,7 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
     const value = costBaseKnown ? inv.summary.costBase : h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null;
     const price = costBaseKnown && units ? value! / units : h ? h.marketPrice : null;
     // Prefer the persisted live price (Investment.marketPrice, from a successful refresh).
-    // Before that's ever happened for a holding — including over a weekend, when a refresh
-    // can't run at all — fall back to its last recorded valuation price rather than a blank
+    // Before that's ever happened for a holding, fall back to its last recorded valuation price rather than a blank
     // dash, so Market Value/Unrealised Gain/Loss still show something meaningful.
     const hasLivePrice = inv.marketPrice !== null && inv.marketPrice !== undefined;
     const marketPrice = hasLivePrice ? inv.marketPrice! : h ? h.marketPrice : null;
@@ -81,7 +81,7 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
           {marketOpen !== null && (
             <span
               className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${marketOpen ? "bg-[var(--color-eucalyptus-tint)] text-[var(--color-eucalyptus-dark)]" : "bg-[var(--color-paper-dim)] text-[var(--color-ink-soft)]"}`}
-              title={marketOpen ? "Market prices refresh automatically while the exchange is open." : "This exchange is closed — showing the last price saved while it was open."}
+              title={marketOpen ? "Market prices refresh automatically about once a minute while the exchange is open." : "This exchange is closed — showing the last saved price. It is refreshed once every 24 hours while the market is closed."}
             >
               {marketOpen ? "Market open" : "Market closed"}
             </span>

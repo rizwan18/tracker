@@ -40,8 +40,8 @@ export default function InvestmentsPage() {
 
   // Refresh persisted market prices in the background, once per page visit. The table above
   // has already rendered from the database by the time this resolves — the backend itself
-  // decides which holdings are actually due (their exchange must be open, and it won't have
-  // refreshed the same one in the last minute — see refresh-market-prices), so this is safe
+  // decides which holdings are actually due (at most once a minute per holding while its
+  // exchange is open, once every 24 hours while it's closed — see refresh-market-prices), so this is safe
   // to fire on every visit without creating uncontrolled provider traffic. Reload afterwards
   // so the table picks up whatever did or didn't change.
   useEffect(() => {

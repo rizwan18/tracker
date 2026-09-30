@@ -75,8 +75,8 @@ router.get(
 );
 
 // Refresh persisted market prices for the household's shares/ETFs from the market-data
-// provider — but only for holdings whose exchange is open right now, and not more than once
-// a minute per holding (see services/marketPriceRefresh.ts). Called by the frontend once,
+// provider — at most once a minute per holding while its exchange is open, and at most once
+// every 24 hours while it's closed (see lib/priceRefreshPolicy.ts). Called by the frontend once,
 // shortly after the Shares and ETFs page has already rendered the stored database values, so
 // a slow/failed provider call never blocks or breaks the initial page load. Returns nothing
 // useful of its own — the frontend just re-fetches GET /investments afterwards to pick up
