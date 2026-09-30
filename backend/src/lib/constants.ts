@@ -158,6 +158,19 @@ export type SourcingInspectionResult = (typeof SOURCING_INSPECTION_RESULTS)[numb
 export const SOURCING_SHIPMENT_METHODS = ["SEA", "AIR", "COURIER", "ROAD", "OTHER"] as const;
 export type SourcingShipmentMethod = (typeof SOURCING_SHIPMENT_METHODS)[number];
 
+// Holiday planner (Personal Finance)
+export const HOLIDAY_STATUSES = ["IDEA", "PLANNING", "BOOKED", "COMPLETED", "CANCELLED"] as const;
+export type HolidayStatus = (typeof HOLIDAY_STATUSES)[number];
+
+export const HOLIDAY_EXPENSE_CATEGORIES = [
+  "FLIGHTS", "ACCOMMODATION", "TRANSPORT", "FOOD", "ACTIVITIES", "INSURANCE", "VISAS", "SHOPPING", "SPENDING_MONEY", "OTHER",
+] as const;
+export type HolidayExpenseCategory = (typeof HOLIDAY_EXPENSE_CATEGORIES)[number];
+
+/** Trip start/end come from the plan's own dates, so they aren't milestone types. */
+export const HOLIDAY_MILESTONE_TYPES = ["BOOKING", "DOCUMENTS", "INSURANCE", "PACKING", "OTHER"] as const;
+export type HolidayMilestoneType = (typeof HOLIDAY_MILESTONE_TYPES)[number];
+
 /** Rough plain-English glossary shown as tooltips/help text throughout the UI. */
 export const GLOSSARY: Record<string, string> = {
   "Capital Gains": "Profit or loss when you sell an investment for more or less than you paid.",

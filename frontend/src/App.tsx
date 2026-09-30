@@ -29,6 +29,8 @@ import InvestmentDetailPage from "./pages/InvestmentDetailPage";
 import SecurityPriceLookupPage from "./pages/SecurityPriceLookupPage";
 import RealisedTransactionsPage from "./pages/RealisedTransactionsPage";
 import BillsPage from "./pages/BillsPage";
+import HolidaysPage from "./pages/HolidaysPage";
+import HolidayDetailPage from "./pages/HolidayDetailPage";
 import RemindersPage from "./pages/RemindersPage";
 import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -84,6 +86,8 @@ export default function App() {
               <Route path="/investments/price-lookup" element={<SecurityPriceLookupPage />} />
               <Route path="/investments/:id" element={<InvestmentDetailPage />} />
               <Route path="/bills" element={<BillsPage />} />
+              <Route path="/holidays" element={<HolidaysPage />} />
+              <Route path="/holidays/:id" element={<HolidayDetailPage />} />
               <Route path="/reminders" element={<RemindersPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/import-export" element={<ImportExportPage />} />

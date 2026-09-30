@@ -60,6 +60,7 @@ model Household {
   documents     Document[]
   capitalGainDisposals CapitalGainDisposal[]
   sourcingRecords SourcingRecord[]
+  holidayPlans  HolidayPlan[]
 }
 
 model User {
@@ -758,4 +759,65 @@ model SourcingShipment {
   documents           Document[]
 
   @@index([sourcingRecordId])
+}
+
+// ---------------------------------------------------------------------------
+// Holiday planner (Personal Finance): a trip with a budget, its expenses (each
+// optionally with a payment due date) and a checklist of dated milestones
+// (book flights, renew passport…). Money is in AUD dollars as Float, matching
+// Bill and Transaction. The timeline the person sees is built on read from
+// the trip dates, milestones and expense due dates — it isn't stored.
+// ---------------------------------------------------------------------------
+
+model HolidayPlan {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String
+  destination String?
+  status      String    @default("PLANNING") // IDEA | PLANNING | BOOKED | COMPLETED | CANCELLED
+  startDate   DateTime?
+  endDate     DateTime?
+  travellers  Int       @default(1)
+  budget      Float?    // overall spending limit, AUD
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  expenses   HolidayExpense[]
+  milestones HolidayMilestone[]
+
+  @@index([householdId])
+  @@index([householdId, startDate])
+}
+
+model HolidayExpense {
+  id              String      @id @default(cuid())
+  holidayPlanId   String
+  holidayPlan     HolidayPlan @relation(fields: [holidayPlanId], references: [id], onDelete: Cascade)
+  category        String      // FLIGHTS | ACCOMMODATION | TRANSPORT | FOOD | ACTIVITIES | INSURANCE | VISAS | SHOPPING | SPENDING_MONEY | OTHER
+  description     String
+  estimatedAmount Float       @default(0)
+  /// The real cost once known (a quote or invoice). Until then the estimate is used.
+  actualAmount    Float?
+  dueDate         DateTime?   // when it has to be paid by
+  paidDate        DateTime?   // set once paid
+  notes           String?
+  createdAt       DateTime    @default(now())
+
+  @@index([holidayPlanId])
+}
+
+model HolidayMilestone {
+  id            String      @id @default(cuid())
+  holidayPlanId String
+  holidayPlan   HolidayPlan @relation(fields: [holidayPlanId], references: [id], onDelete: Cascade)
+  title         String
+  type          String      @default("OTHER") // BOOKING | DOCUMENTS | INSURANCE | PACKING | OTHER
+  date          DateTime
+  done          Boolean     @default(false)
+  notes         String?
+  createdAt     DateTime    @default(now())
+
+  @@index([holidayPlanId])
 }

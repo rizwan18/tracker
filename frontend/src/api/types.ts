@@ -383,3 +383,78 @@ export interface Portfolio {
   role: string;
   isDefault: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Holiday planner (Personal Finance)
+// ---------------------------------------------------------------------------
+export type HolidayStatus = "IDEA" | "PLANNING" | "BOOKED" | "COMPLETED" | "CANCELLED";
+export type HolidayExpenseCategory = "FLIGHTS" | "ACCOMMODATION" | "TRANSPORT" | "FOOD" | "ACTIVITIES" | "INSURANCE" | "VISAS" | "SHOPPING" | "SPENDING_MONEY" | "OTHER";
+export type HolidayMilestoneType = "BOOKING" | "DOCUMENTS" | "INSURANCE" | "PACKING" | "OTHER";
+
+export interface HolidayTotals {
+  estimated: number;
+  projected: number;
+  paid: number;
+  outstanding: number;
+  budget: number | null;
+  budgetRemaining: number | null;
+  perPerson: number;
+  expenseCount: number;
+  paidCount: number;
+}
+
+export interface HolidaySummary {
+  id: string;
+  name: string;
+  destination: string | null;
+  status: HolidayStatus;
+  startDate: string | null;
+  endDate: string | null;
+  travellers: number;
+  budget: number | null;
+  totals: HolidayTotals;
+  openMilestones: number;
+  updatedAt: string;
+}
+
+export interface HolidayExpense {
+  id: string;
+  category: HolidayExpenseCategory;
+  description: string;
+  estimatedAmount: number;
+  actualAmount: number | null;
+  dueDate: string | null;
+  paidDate: string | null;
+  notes: string | null;
+}
+
+export interface HolidayMilestone {
+  id: string;
+  title: string;
+  type: HolidayMilestoneType;
+  date: string;
+  done: boolean;
+  notes: string | null;
+}
+
+export interface HolidayTimelineItem {
+  key: string;
+  kind: "TRIP_START" | "TRIP_END" | "MILESTONE" | "PAYMENT_DUE";
+  date: string;
+  title: string;
+  tag: string | null;
+  detail: string | null;
+  amount: number | null;
+  done: boolean;
+  overdue: boolean;
+  refId: string | null;
+}
+
+export interface HolidayDetail extends HolidaySummary {
+  notes: string | null;
+  savings: { daysLeft: number; perMonth: number; perFortnight: number } | null;
+  byCategory: Array<{ category: HolidayExpenseCategory; estimated: number; projected: number; paid: number }>;
+  timeline: HolidayTimelineItem[];
+  expenses: HolidayExpense[];
+  milestones: HolidayMilestone[];
+}

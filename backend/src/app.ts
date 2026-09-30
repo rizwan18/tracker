@@ -19,6 +19,7 @@ import portfolioRoutes from "./routes/portfolios";
 import businessRoutes from "./routes/business";
 import sourcingRoutes from "./routes/sourcing";
 import marketDataRoutes from "./routes/marketData";
+import holidayRoutes from "./routes/holidays";
 import { errorHandler } from "./middleware/errorHandler";
 
 export function createApp() {
@@ -54,6 +55,7 @@ export function createApp() {
   app.use("/api/business", businessRoutes);
   app.use("/api/business/sourcing", sourcingRoutes);
   app.use("/api/market-data", marketDataRoutes);
+  app.use("/api/holidays", holidayRoutes);
 
   // 404 for unknown API routes, before the generic error handler.
   app.use("/api", (_req, res) => res.status(404).json({ error: "We couldn't find what you were looking for." }));

@@ -6,6 +6,7 @@ import { ACCOUNT_GROUPS, ACCOUNT_TYPES_LEDGER, GROUPS_BY_TYPE } from "../service
 import {
   BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES, PORTFOLIO_TYPES,
   SOURCING_ORIGINS, SOURCING_STATUSES, SOURCING_PAYMENT_TYPES, SOURCING_PAYMENT_METHODS, SOURCING_INSPECTION_RESULTS, SOURCING_SHIPMENT_METHODS,
+  HOLIDAY_STATUSES, HOLIDAY_EXPENSE_CATEGORIES, HOLIDAY_MILESTONE_TYPES,
 } from "./constants";
 
 export const registerSchema = z.object({
@@ -391,4 +392,43 @@ export const propertyManagerSchema = z.object({
 /** Saving manager details, optionally copying the same details onto other properties. */
 export const propertyManagerSaveSchema = propertyManagerSchema.extend({
   applyToPropertyIds: z.array(z.string().min(1)).max(50).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Holiday planner (Personal Finance)
+// ---------------------------------------------------------------------------
+const optionalHolidayText = (max: number) =>
+  z.string().trim().max(max, `Please keep this under ${max} characters.`).optional().nullable().transform((v) => (v ? v : null));
+
+const holidayAmount = z.coerce.number({ invalid_type_error: "Please enter an amount." }).min(0, "Amounts can't be negative.").max(10_000_000, "That amount looks too large.");
+
+export const holidayPlanSchema = z
+  .object({
+    name: z.string().trim().min(1, "Please name this holiday.").max(120),
+    destination: optionalHolidayText(150),
+    status: z.enum(HOLIDAY_STATUSES).default("PLANNING"),
+    startDate: z.coerce.date().optional().nullable(),
+    endDate: z.coerce.date().optional().nullable(),
+    travellers: z.coerce.number().int("Travellers must be a whole number.").min(1, "At least one traveller.").max(50).default(1),
+    budget: holidayAmount.optional().nullable(),
+    notes: optionalHolidayText(2000),
+  })
+  .refine((v) => !v.startDate || !v.endDate || v.endDate >= v.startDate, { message: "The return date can't be before the departure date.", path: ["endDate"] });
+
+export const holidayExpenseSchema = z.object({
+  category: z.enum(HOLIDAY_EXPENSE_CATEGORIES).default("OTHER"),
+  description: z.string().trim().min(1, "Please describe this expense.").max(200),
+  estimatedAmount: holidayAmount.default(0),
+  actualAmount: holidayAmount.optional().nullable(),
+  dueDate: z.coerce.date().optional().nullable(),
+  paidDate: z.coerce.date().optional().nullable(),
+  notes: optionalHolidayText(1000),
+});
+
+export const holidayMilestoneSchema = z.object({
+  title: z.string().trim().min(1, "Please give this a title.").max(150),
+  type: z.enum(HOLIDAY_MILESTONE_TYPES).default("OTHER"),
+  date: z.coerce.date({ errorMap: () => ({ message: "Please choose a date." }) }),
+  done: z.boolean().default(false),
+  notes: optionalHolidayText(1000),
 });

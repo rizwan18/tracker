@@ -12,6 +12,7 @@ const PRIMARY_NAV = [
   { to: "/investments", label: "Shares and ETFs", icon: "📈" },
   { to: "/crypto-managed-funds", label: "Crypto, Managed Funds, Term Deposit", icon: "🪙" },
   { to: "/bills", label: "Bills", icon: "🧾" },
+  { to: "/holidays", label: "Holidays", icon: "✈️" },
   { to: "/reminders", label: "Reminders", icon: "🔔" },
   { to: "/reports", label: "Reports", icon: "📊" },
   { to: "/import-export", label: "Import / Export", icon: "📥" },
