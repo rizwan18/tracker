@@ -18,11 +18,18 @@ export function formatCents(cents: number): string {
   return formatMoney(cents / 100);
 }
 
-export type GstMode = "INCLUSIVE" | "EXCLUSIVE" | "FREE";
+export type GstMode = "INCLUSIVE" | "EXCLUSIVE" | "FREE" | "MANUAL";
 
-/** Same rules as the server: GST is 1/11 of a GST-inclusive price, or 10% on top of an exclusive one. */
-export function computeGst(amountCents: number, mode: GstMode, gstRegistered: boolean): { totalCents: number; gstCents: number; netCents: number } {
+/**
+ * Same rules as the server: GST is 1/11 of a GST-inclusive price, or 10% on top of an exclusive one.
+ * For MANUAL the amount is the total and the GST is whatever the person typed (blank = 0) — never estimated.
+ */
+export function computeGst(amountCents: number, mode: GstMode, gstRegistered: boolean, manualGstCents: number | null = null): { totalCents: number; gstCents: number; netCents: number } {
   if (!gstRegistered || mode === "FREE") return { totalCents: amountCents, gstCents: 0, netCents: amountCents };
+  if (mode === "MANUAL") {
+    const gstCents = Math.round(manualGstCents ?? 0);
+    return { totalCents: amountCents, gstCents, netCents: amountCents - gstCents };
+  }
   if (mode === "INCLUSIVE") {
     const gstCents = Math.round(amountCents / 11);
     return { totalCents: amountCents, gstCents, netCents: amountCents - gstCents };

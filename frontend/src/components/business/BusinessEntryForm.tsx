@@ -5,7 +5,8 @@ import { Button, Field, inputClass } from "../ui";
 import { centsToInput, computeGst, formatCents, toCents, type GstMode } from "../../lib/money";
 import { toInputDate } from "../../lib/format";
 
-const GST_LABELS: Record<GstMode, string> = { INCLUSIVE: "Includes GST", EXCLUSIVE: "Plus GST", FREE: "No GST" };
+// MANUAL first: the person types the GST from the tax invoice and nothing is estimated for them.
+const GST_LABELS: Record<GstMode, string> = { MANUAL: "I'll enter the GST amount", INCLUSIVE: "Includes GST (10%)", EXCLUSIVE: "Plus GST (10%)", FREE: "No GST" };
 
 function addDays(isoDay: string, days: number): string {
   const d = new Date(`${isoDay}T00:00:00Z`);
@@ -46,7 +47,10 @@ export function BusinessEntryForm({
   const [reference, setReference] = useState(initial?.reference ?? "");
   const [accountId, setAccountId] = useState(initial?.account.id ?? "");
   const [amount, setAmount] = useState(initial ? centsToInput(initial.gstMode === "EXCLUSIVE" ? initial.netCents : initial.totalCents) : "");
-  const [gstMode, setGstMode] = useState<GstMode>(initial?.gstMode ?? "INCLUSIVE");
+  // New expenses start on "I'll enter the GST amount" (blank = $0), so GST is only ever what the person records.
+  // New sales, and any entry being edited, keep the mode they already had.
+  const [gstMode, setGstMode] = useState<GstMode>(initial?.gstMode ?? (isSale ? "INCLUSIVE" : "MANUAL"));
+  const [gstInput, setGstInput] = useState(initial?.gstMode === "MANUAL" && initial.gstCents > 0 ? centsToInput(initial.gstCents) : "");
   const [status, setStatus] = useState<"PAID" | "UNPAID">(initial?.status ?? "PAID");
   const [paidDate, setPaidDate] = useState(initial?.paidDate ? toInputDate(initial.paidDate) : initial ? "" : defaultDate);
   const [bankAccountId, setBankAccountId] = useState(initial?.bankAccount?.id ?? banks.find((b) => b.type === "ASSET")?.id ?? "");
@@ -56,7 +60,22 @@ export function BusinessEntryForm({
   const [saving, setSaving] = useState(false);
 
   const cents = toCents(amount);
-  const preview = useMemo(() => (cents && cents > 0 ? computeGst(cents, gstMode, profile.gstRegistered) : null), [cents, gstMode, profile.gstRegistered]);
+  // The typed GST: blank counts as $0; anything that isn't a valid non-negative amount is null.
+  const manualGst = gstInput.trim() === "" ? 0 : toCents(gstInput);
+  const manualGstError =
+    gstMode !== "MANUAL" || !profile.gstRegistered || gstInput.trim() === ""
+      ? null
+      : gstInput.trim().startsWith("-")
+        ? "GST can't be negative."
+        : manualGst === null
+          ? "Please enter the GST as a dollar amount, like 10.00."
+          : cents !== null && manualGst > cents
+            ? `The GST can't be more than the ${isSale ? "sale" : "expense"} amount.`
+            : null;
+  const preview = useMemo(
+    () => (cents && cents > 0 && !manualGstError ? computeGst(cents, gstMode, profile.gstRegistered, manualGst) : null),
+    [cents, gstMode, profile.gstRegistered, manualGst, manualGstError]
+  );
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -64,6 +83,7 @@ export function BusinessEntryForm({
     if (!description.trim()) return setError("Please describe it.");
     if (!accountId) return setError(isSale ? "Please choose an income category." : "Please choose an expense category.");
     if (!cents || cents <= 0) return setError("Please enter an amount greater than zero.");
+    if (manualGstError) return setError(manualGstError);
     if (status === "PAID" && !bankAccountId) return setError("Please choose the bank account.");
     setSaving(true);
     try {
@@ -77,6 +97,7 @@ export function BusinessEntryForm({
         accountId,
         amountCents: cents,
         gstMode: profile.gstRegistered ? gstMode : "FREE",
+        gstCents: profile.gstRegistered && gstMode === "MANUAL" ? manualGst ?? 0 : null,
         status,
         paidDate: status === "PAID" ? paidDate || date : null,
         bankAccountId: status === "PAID" ? bankAccountId : null,
@@ -141,7 +162,7 @@ export function BusinessEntryForm({
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="Amount" htmlFor="be-amount">
+        <Field label={isSale ? "Amount" : "Expense amount"} htmlFor="be-amount" hint={gstMode === "MANUAL" && profile.gstRegistered ? "The total, including any GST." : undefined}>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-soft)]">$</span>
             <input id="be-amount" inputMode="decimal" className={`${inputClass} pl-7`} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
@@ -159,6 +180,31 @@ export function BusinessEntryForm({
           </Field>
         )}
       </div>
+
+      {profile.gstRegistered && gstMode === "MANUAL" && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label="GST (optional)" htmlFor="be-gst-amount" hint={`GST component included in this ${isSale ? "sale" : "expense"}, if applicable.`}>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-soft)]">$</span>
+              <input
+                id="be-gst-amount"
+                inputMode="decimal"
+                className={`${inputClass} pl-7`}
+                value={gstInput}
+                onChange={(e) => setGstInput(e.target.value)}
+                placeholder="0.00"
+                aria-invalid={manualGstError ? true : undefined}
+                aria-describedby={manualGstError ? "be-gst-error" : undefined}
+              />
+            </div>
+          </Field>
+          {manualGstError && (
+            <p id="be-gst-error" role="alert" className="text-sm text-[var(--color-brick)] sm:self-end sm:pb-2">
+              {manualGstError}
+            </p>
+          )}
+        </div>
+      )}
 
       {preview && profile.gstRegistered && (
         <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">

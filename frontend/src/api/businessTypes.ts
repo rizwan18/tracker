@@ -35,7 +35,7 @@ export interface BusinessEntry {
   totalCents: number;
   gstCents: number;
   netCents: number;
-  gstMode: "INCLUSIVE" | "EXCLUSIVE" | "FREE";
+  gstMode: "INCLUSIVE" | "EXCLUSIVE" | "FREE" | "MANUAL";
   status: "PAID" | "UNPAID";
   paidDate: string | null;
   bankAccount: { id: string; code: string; name: string } | null;

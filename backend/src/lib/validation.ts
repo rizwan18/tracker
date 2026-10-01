@@ -221,12 +221,15 @@ export const businessEntrySchema = z
     /** The amount as typed, in cents; GST is added or extracted according to gstMode. */
     amountCents: z.number().int("Amounts are in whole cents.").min(1, "The amount must be more than zero.").max(MAX_ENTRY_CENTS, "That amount is too large."),
     gstMode: z.enum(GST_MODES).default("INCLUSIVE"),
+    /** Only used when gstMode is MANUAL: the GST part of the amount, in cents. Blank/omitted = $0. */
+    gstCents: z.number({ invalid_type_error: "Please enter the GST as an amount." }).int("GST is in whole cents.").min(0, "GST can't be negative.").max(MAX_ENTRY_CENTS, "That GST amount is too large.").nullable().optional(),
     status: z.enum(["PAID", "UNPAID"]).default("PAID"),
     paidDate: z.coerce.date().nullable().optional(),
     bankAccountId: z.string().nullable().optional(),
     notes: z.string().max(2000).nullable().optional(),
   })
-  .refine((v) => v.status !== "PAID" || (!!v.bankAccountId && !!v.paidDate), { message: "Choose the bank account and the date it was paid." });
+  .refine((v) => v.status !== "PAID" || (!!v.bankAccountId && !!v.paidDate), { message: "Choose the bank account and the date it was paid." })
+  .refine((v) => v.gstMode !== "MANUAL" || (v.gstCents ?? 0) <= v.amountCents, { message: "The GST can't be more than the amount.", path: ["gstCents"] });
 
 export const businessPaySchema = z.object({ paidDate: z.coerce.date(), bankAccountId: z.string().min(1, "Choose the bank account.") });
 

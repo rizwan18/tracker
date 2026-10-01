@@ -5,7 +5,7 @@ import { useFinancialYear } from "../../context/FinancialYearContext";
 import { useBusinessBasics } from "../../hooks/useBusiness";
 import { Button, Card, SectionHeading, inputClass } from "../../components/ui";
 import { downloadCsv, type CsvCell } from "../../lib/csvDownload";
-import { financialYearBounds, formatDate } from "../../lib/format";
+import { financialYearBounds, formatDate, formatDateUtc } from "../../lib/format";
 import { formatCents } from "../../lib/money";
 
 type ReportId = "income" | "balance" | "trial" | "gst" | "receivables" | "payables" | "cash" | "monthly" | "ledger";
@@ -118,10 +118,118 @@ function TrialBalanceView({ t }: { t: TrialBalance }) {
   );
 }
 
+// ------------------------------------------------------------------ BAS reporting period
+type BasMode = "quarter" | "month" | "custom";
+
+/** Quarter (1–4) of the Australian financial year that a YYYY-MM-DD date falls in: Jul–Sep = 1 … Apr–Jun = 4. */
+function quarterOfDate(iso: string): number {
+  const m = Number(iso.slice(5, 7)) - 1;
+  return m >= 6 && m <= 8 ? 1 : m >= 9 ? 2 : m <= 2 ? 3 : 4;
+}
+
+/** Labels for the four quarters of a financial year, e.g. "Q1 · Jul–Sep 2026". */
+function quarterLabels(financialYearId: string): Array<{ q: number; label: string }> {
+  const y = Number(financialYearId.slice(0, 4));
+  return [
+    { q: 1, label: `Q1 · Jul–Sep ${y}` },
+    { q: 2, label: `Q2 · Oct–Dec ${y}` },
+    { q: 3, label: `Q3 · Jan–Mar ${y + 1}` },
+    { q: 4, label: `Q4 · Apr–Jun ${y + 1}` },
+  ];
+}
+
+/** The quarter to start on: the current one if today is in this financial year, otherwise Q1. */
+function defaultQuarter(bounds: { start: string; end: string }): number {
+  const today = todayIso();
+  return today >= bounds.start && today <= bounds.end ? quarterOfDate(today) : 1;
+}
+
+/** The month to start on (YYYY-MM): this month if it's in the financial year, otherwise the year's last month. */
+function defaultMonth(bounds: { start: string; end: string }): string {
+  const today = todayIso();
+  return today >= bounds.start && today <= bounds.end ? today.slice(0, 7) : bounds.end.slice(0, 7);
+}
+
+function BasPeriodPicker(props: {
+  financialYearId: string;
+  bounds: { start: string; end: string };
+  mode: BasMode;
+  setMode: (m: BasMode) => void;
+  quarter: number;
+  setQuarter: (q: number) => void;
+  month: string;
+  setMonth: (m: string) => void;
+  from: string;
+  setFrom: (v: string) => void;
+  to: string;
+  setTo: (v: string) => void;
+}) {
+  const { mode, setMode } = props;
+  const modes: Array<{ id: BasMode; label: string }> = [
+    { id: "quarter", label: "Quarterly" },
+    { id: "month", label: "Monthly" },
+    { id: "custom", label: "Custom dates" },
+  ];
+  return (
+    <>
+      <div className="text-sm">
+        <span className="block text-xs text-[var(--color-ink-soft)] mb-1">BAS period</span>
+        <div className="flex rounded-xl border border-[var(--color-line)] p-1" role="group" aria-label="BAS reporting period">
+          {modes.map((m) => (
+            <button key={m.id} aria-pressed={mode === m.id} onClick={() => setMode(m.id)} className={`px-3 py-1 rounded-lg text-sm font-medium ${mode === m.id ? "bg-[var(--color-eucalyptus)] text-white" : "text-[var(--color-ink-soft)]"}`}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {mode === "quarter" && (
+        <label className="text-sm">
+          <span className="block text-xs text-[var(--color-ink-soft)] mb-1">Quarter ({props.financialYearId} financial year)</span>
+          <select aria-label="BAS quarter" className={inputClass} value={props.quarter} onChange={(e) => props.setQuarter(Number(e.target.value))}>
+            {quarterLabels(props.financialYearId).map((q) => (
+              <option key={q.q} value={q.q}>
+                {q.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {mode === "month" && (
+        <label className="text-sm">
+          <span className="block text-xs text-[var(--color-ink-soft)] mb-1">Month</span>
+          <input type="month" aria-label="BAS month" className={inputClass} min={props.bounds.start.slice(0, 7)} max={props.bounds.end.slice(0, 7)} value={props.month} onChange={(e) => props.setMonth(e.target.value)} />
+        </label>
+      )}
+      {mode === "custom" && (
+        <>
+          <label className="text-sm">
+            <span className="block text-xs text-[var(--color-ink-soft)] mb-1">From</span>
+            <input type="date" aria-label="From date" className={inputClass} value={props.from} onChange={(e) => props.setFrom(e.target.value)} />
+          </label>
+          <label className="text-sm">
+            <span className="block text-xs text-[var(--color-ink-soft)] mb-1">To</span>
+            <input type="date" aria-label="To date" className={inputClass} value={props.to} onChange={(e) => props.setTo(e.target.value)} />
+          </label>
+        </>
+      )}
+    </>
+  );
+}
+
 function GstView({ g, registered }: { g: GstReport; registered: boolean }) {
   return (
     <>
       {!registered && <p className="text-sm bg-[var(--color-ochre-tint)] text-[#7a4d1a] rounded-lg px-3 py-2 mb-3">Your business isn't set up as registered for GST, so nothing is collected or claimed. Change this in Settings if that's wrong.</p>}
+      <h4 className="font-display font-semibold mb-1">BAS / GST summary</h4>
+      <table className="w-full text-sm mb-6">
+        <tbody>
+          <Row label="Business expenses (including GST)" value={g.g10CapitalPurchasesCents + g.g11NonCapitalPurchasesCents} />
+          <Row label="GST on expenses / GST credits (1B)" value={g.oneBGstOnPurchasesCents} bold />
+          <Row label="GST on sales (1A)" value={g.oneAGstOnSalesCents} />
+          <Row label={g.netGstCents >= 0 ? "GST payable to the ATO" : "GST refund from the ATO"} value={Math.abs(g.netGstCents)} bold />
+        </tbody>
+      </table>
+      <h4 className="font-display font-semibold mb-1">BAS labels</h4>
       <table className="w-full text-sm">
         <tbody>
           <SectionRows title="Sales" section={{ lines: [{ accountId: "g1", code: "G1", name: "G1  Total sales (including GST)", amountCents: g.g1TotalSalesCents }, { accountId: "g3", code: "G3", name: "G3  GST-free sales", amountCents: g.g3GstFreeSalesCents }], totalCents: g.g1TotalSalesCents }} totalLabel="Total sales" />
@@ -275,7 +383,7 @@ type Loaded =
   | { id: "income"; data: IncomeStatement }
   | { id: "balance"; data: BalanceSheet }
   | { id: "trial"; data: TrialBalance }
-  | { id: "gst"; data: GstReport; registered: boolean }
+  | { id: "gst"; data: GstReport; registered: boolean; from: string; to: string; period: string | null }
   | { id: "receivables" | "payables"; data: AgedReport }
   | { id: "cash"; data: CashSummary }
   | { id: "monthly"; data: MonthlyRow[] }
@@ -295,7 +403,7 @@ function csvFor(r: Loaded): CsvCell[][] {
       return [["Code", "Account", "Debit", "Credit"], ...r.data.rows.map((x) => [x.code, x.name, money(x.debitCents), money(x.creditCents)] as CsvCell[]), ["", "Totals", money(r.data.totalDebitCents), money(r.data.totalCreditCents)]];
     case "gst": {
       const g = r.data;
-      return [["Item", "Amount"], ["G1 Total sales (including GST)", money(g.g1TotalSalesCents)], ["G3 GST-free sales", money(g.g3GstFreeSalesCents)], ["1A GST on sales", money(g.oneAGstOnSalesCents)], ["G10 Capital purchases (including GST)", money(g.g10CapitalPurchasesCents)], ["G11 Other purchases (including GST)", money(g.g11NonCapitalPurchasesCents)], ["1B GST on purchases", money(g.oneBGstOnPurchasesCents)], [g.netGstCents >= 0 ? "GST payable (1A - 1B)" : "GST refund (1A - 1B)", money(Math.abs(g.netGstCents))]];
+      return [["Reporting period", `${r.from.slice(0, 10)} to ${r.to.slice(0, 10)}`], ["Basis", g.basis === "CASH" ? "Cash" : "Accrual"], [], ["BAS / GST summary", "Amount"], ["Business expenses (including GST)", money(g.g10CapitalPurchasesCents + g.g11NonCapitalPurchasesCents)], ["GST on expenses / GST credits (1B)", money(g.oneBGstOnPurchasesCents)], ["GST on sales (1A)", money(g.oneAGstOnSalesCents)], [g.netGstCents >= 0 ? "GST payable" : "GST refund", money(Math.abs(g.netGstCents))], [], ["BAS label", "Amount"], ["G1 Total sales (including GST)", money(g.g1TotalSalesCents)], ["G3 GST-free sales", money(g.g3GstFreeSalesCents)], ["1A GST on sales", money(g.oneAGstOnSalesCents)], ["G10 Capital purchases (including GST)", money(g.g10CapitalPurchasesCents)], ["G11 Other purchases (including GST)", money(g.g11NonCapitalPurchasesCents)], ["1B GST on purchases", money(g.oneBGstOnPurchasesCents)], [g.netGstCents >= 0 ? "GST payable (1A - 1B)" : "GST refund (1A - 1B)", money(Math.abs(g.netGstCents))]];
     }
     case "receivables":
     case "payables":
@@ -318,6 +426,10 @@ export default function BusinessReportsPage() {
   const [to, setTo] = useState(bounds.end);
   const [asAt, setAsAt] = useState(bounds.end < todayIso() ? bounds.end : todayIso());
   const [accountId, setAccountId] = useState("");
+  // GST / BAS only: report by quarter or month of the financial year, or a custom date range.
+  const [basMode, setBasMode] = useState<BasMode>("quarter");
+  const [basQuarter, setBasQuarter] = useState(() => defaultQuarter(bounds));
+  const [basMonth, setBasMonth] = useState(() => defaultMonth(bounds));
   const [result, setResult] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -327,6 +439,8 @@ export default function BusinessReportsPage() {
     setFrom(bounds.start);
     setTo(bounds.end);
     setAsAt(bounds.end < todayIso() ? bounds.end : todayIso());
+    setBasQuarter(defaultQuarter(bounds));
+    setBasMonth(defaultMonth(bounds));
   }, [bounds]);
 
   const def = REPORTS.find((r) => r.id === id)!;
@@ -335,7 +449,7 @@ export default function BusinessReportsPage() {
     let cancelled = false;
     async function run() {
       setError(null);
-      if (id === "ledger" && !accountId) {
+      if ((id === "ledger" && !accountId) || (id === "gst" && basMode === "month" && !basMonth)) {
         setResult(null);
         return;
       }
@@ -347,8 +461,9 @@ export default function BusinessReportsPage() {
         else if (id === "balance") loaded = { id, data: (await api.get<{ sheet: BalanceSheet }>(`/business/reports/balance-sheet?${q}`)).sheet };
         else if (id === "trial") loaded = { id, data: (await api.get<{ trialBalance: TrialBalance }>(`/business/reports/trial-balance?${q}`)).trialBalance };
         else if (id === "gst") {
-          const res = await api.get<{ report: GstReport; gstRegistered: boolean }>(`/business/reports/gst?${q}`);
-          loaded = { id, data: res.report, registered: res.gstRegistered };
+          const gq = basMode === "quarter" ? `period=quarter&financialYear=${financialYearId}&quarter=${basQuarter}` : basMode === "month" ? `period=month&month=${basMonth}` : q;
+          const res = await api.get<{ report: GstReport; gstRegistered: boolean; from: string; to: string; period: string | null }>(`/business/reports/gst?${gq}`);
+          loaded = { id, data: res.report, registered: res.gstRegistered, from: res.from, to: res.to, period: res.period };
         } else if (id === "receivables" || id === "payables") loaded = { id, data: (await api.get<{ report: AgedReport }>(`/business/reports/aged?type=${id}&${q}`)).report };
         else if (id === "cash") loaded = { id, data: (await api.get<{ summary: CashSummary }>(`/business/reports/cash?${q}`)).summary };
         else if (id === "monthly") loaded = { id, data: (await api.get<{ months: MonthlyRow[] }>(`/business/reports/monthly?${q}`)).months };
@@ -370,11 +485,12 @@ export default function BusinessReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, from, to, asAt, accountId, def.mode]);
+  }, [id, from, to, asAt, accountId, def.mode, basMode, basQuarter, basMonth, financialYearId]);
 
   if (basicsLoading || !profile) return <p className="text-[var(--color-ink-soft)]">Loading…</p>;
 
-  const periodText = def.mode === "range" ? `${formatDate(from)} to ${formatDate(to)}` : `As at ${formatDate(asAt)}`;
+  // The BAS report states the exact dates the server used for the chosen month/quarter.
+  const periodText = result?.id === "gst" ? `${formatDateUtc(result.from)} to ${formatDateUtc(result.to)}${result.period ? ` · ${result.period}` : ""}` : def.mode === "range" ? `${formatDate(from)} to ${formatDate(to)}` : `As at ${formatDate(asAt)}`;
 
   return (
     <div className="space-y-6">
@@ -391,7 +507,22 @@ export default function BusinessReportsPage() {
       </div>
 
       <div className="print:hidden flex flex-wrap items-end gap-3">
-        {def.mode === "range" ? (
+        {def.mode === "range" && id === "gst" ? (
+          <BasPeriodPicker
+            financialYearId={financialYearId}
+            bounds={bounds}
+            mode={basMode}
+            setMode={setBasMode}
+            quarter={basQuarter}
+            setQuarter={setBasQuarter}
+            month={basMonth}
+            setMonth={setBasMonth}
+            from={from}
+            setFrom={setFrom}
+            to={to}
+            setTo={setTo}
+          />
+        ) : def.mode === "range" ? (
           <>
             <label className="text-sm">
               <span className="block text-xs text-[var(--color-ink-soft)] mb-1">From</span>

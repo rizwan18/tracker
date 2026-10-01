@@ -7,6 +7,7 @@ import { businessEntrySchema, businessPaySchema, businessProfileSchema, ledgerAc
 import { getFinancialYearId } from "../lib/financialYear";
 import { formatAbn } from "../lib/abn";
 import { computeGst } from "../services/business/gst";
+import { resolveBasPeriod } from "../services/business/basPeriods";
 import { isFixedAsset } from "../services/business/chart";
 import { PostingError, assertBalanced } from "../services/business/posting";
 import { ensureBusinessSetup, loadAccounts, loadLines, parseDay, repostEntry } from "../services/business/ledgerStore";
@@ -174,6 +175,9 @@ router.get(
       totals: {
         incomeCents: total("INCOME", (e) => e.totalCents - e.gstCents),
         expenseCents: total("EXPENSE", (e) => e.totalCents - e.gstCents),
+        // GST included in the listed sales / expenses (it is part of totalCents, never on top of it).
+        incomeGstCents: total("INCOME", (e) => e.gstCents),
+        expenseGstCents: total("EXPENSE", (e) => e.gstCents),
         unpaidIncomeCents: rows.filter((e) => e.kind === "INCOME" && e.status === "UNPAID").reduce((s, e) => s + e.totalCents, 0),
         unpaidExpenseCents: rows.filter((e) => e.kind === "EXPENSE" && e.status === "UNPAID").reduce((s, e) => s + e.totalCents, 0),
       },
@@ -196,7 +200,7 @@ async function checkEntryAccounts(householdId: string, data: { kind: string; acc
 }
 
 function entryData(data: ReturnType<typeof businessEntrySchema.parse>, gstRegistered: boolean) {
-  const g = computeGst(data.amountCents, data.gstMode, gstRegistered);
+  const g = computeGst(data.amountCents, data.gstMode, gstRegistered, data.gstCents ?? null);
   const paid = data.status === "PAID";
   return {
     kind: data.kind,
@@ -415,7 +419,10 @@ reports.get(
   "/gst",
   asyncHandler(async (req: AuthedRequest, res) => {
     const { householdId, profile, accounts } = await reportContext(req);
-    const { from, to } = periodOf(req);
+    // A BAS period can be picked as a month or a quarter of the financial year, or given as a custom from/to.
+    const basPeriod = resolveBasPeriod(req.query);
+    if ((req.query.period === "month" || req.query.period === "quarter") && !basPeriod) throw new FriendlyError("That BAS reporting period isn't valid.", 400);
+    const { from, to } = basPeriod ?? periodOf(req);
     const entries = await prisma.businessEntry.findMany({
       where: { householdId },
       select: { kind: true, date: true, paidDate: true, status: true, totalCents: true, gstCents: true, accountId: true },
@@ -426,7 +433,7 @@ reports.get(
       entries.map((e) => ({ kind: e.kind as "INCOME" | "EXPENSE", date: e.date, paidDate: e.paidDate, status: e.status as "PAID" | "UNPAID", totalCents: e.totalCents, gstCents: e.gstCents, accountId: e.accountId })),
       basis, from, to, fixed
     );
-    res.json({ from: from.toISOString(), to: to.toISOString(), gstRegistered: profile.gstRegistered, report });
+    res.json({ from: from.toISOString(), to: to.toISOString(), period: basPeriod?.label ?? null, gstRegistered: profile.gstRegistered, report });
   })
 );
 

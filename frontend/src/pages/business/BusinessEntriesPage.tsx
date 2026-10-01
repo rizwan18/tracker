@@ -18,7 +18,7 @@ export default function BusinessEntriesPage({ kind }: { kind: "INCOME" | "EXPENS
   const { financialYearId } = useFinancialYear();
   const { profile, accounts, loading: basicsLoading, error: basicsError } = useBusinessBasics();
   const [items, setItems] = useState<BusinessEntry[]>([]);
-  const [totals, setTotals] = useState({ incomeCents: 0, expenseCents: 0, unpaidIncomeCents: 0, unpaidExpenseCents: 0 });
+  const [totals, setTotals] = useState({ incomeCents: 0, expenseCents: 0, incomeGstCents: 0, expenseGstCents: 0, unpaidIncomeCents: 0, unpaidExpenseCents: 0 });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("ALL");
   const [error, setError] = useState<string | null>(null);
@@ -70,9 +70,17 @@ export default function BusinessEntriesPage({ kind }: { kind: "INCOME" | "EXPENS
         action={<Button onClick={() => setEditing("new")}>{isSale ? "+ New sale" : "+ New expense"}</Button>}
       />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid grid-cols-2 gap-3 ${profile.gstRegistered ? "md:grid-cols-3" : ""}`}>
         <StatTile label={isSale ? "Sales (before GST)" : "Expenses (before GST)"} value={formatCents(total)} tone={isSale ? "positive" : "negative"} />
         <StatTile label={isSale ? "Waiting to be paid" : "Bills still to pay"} value={formatCents(unpaid)} tone="neutral" help={isSale ? "Invoices customers haven't paid yet (including GST)." : "Bills you haven't paid yet (including GST)."} />
+        {profile.gstRegistered && (
+          <StatTile
+            label={isSale ? "GST on sales" : "GST on expenses"}
+            value={formatCents(isSale ? totals.incomeGstCents : totals.expenseGstCents)}
+            tone="neutral"
+            help={isSale ? "GST included in these sales (1A on your BAS)." : "GST included in these expenses (claimable as 1B on your BAS)."}
+          />
+        )}
       </div>
 
       <div className="flex rounded-xl border border-[var(--color-line)] p-1 w-fit" role="group" aria-label="Filter">
