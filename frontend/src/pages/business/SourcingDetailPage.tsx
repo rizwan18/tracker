@@ -5,6 +5,7 @@ import type { SourcingDetail, SourcingDocument } from "../../api/businessTypes";
 import { useBusinessBasics } from "../../hooks/useBusiness";
 import { Button, Card, EmptyState, SectionHeading, StatTile, TabPanel, Tabs } from "../../components/ui";
 import { Modal } from "../../components/Modal";
+import { SourcingPricingCard } from "../../components/business/SourcingPricingCard";
 import { SourcingInspectionForm, SourcingPaymentForm, SourcingRecordForm, SourcingShipmentForm } from "../../components/business/SourcingForms";
 import { formatCurrencyIn, formatDate } from "../../lib/format";
 import {
@@ -226,12 +227,13 @@ export default function SourcingDetailPage() {
 
       {tab === "overview" && (
         <TabPanel id="overview">
+          <SourcingPricingCard record={r} />
           <div className="grid md:grid-cols-2 gap-6">
             <Card>
               <h3 className="font-display font-semibold mb-2">Order</h3>
               <dl>
                 <Row label="Quantity">{r.quantity}</Row>
-                <Row label="Cost per unit">{money(r.unitCostCents)}</Row>
+                <Row label="Supplier price per unit">{money(r.unitCostCents)}</Row>
                 <Row label="Currency">{r.currency}</Row>
                 <Row label="Ordered">{r.orderDate && formatDate(r.orderDate)}</Row>
                 <Row label="Expected">{r.expectedDate && formatDate(r.expectedDate)}</Row>

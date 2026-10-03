@@ -154,6 +154,22 @@ export type SourcingPaymentMethod = "BANK_TRANSFER" | "CREDIT_CARD" | "PAYPAL" |
 export type SourcingInspectionResult = "PENDING" | "PASSED" | "FAILED" | "PASSED_WITH_NOTES";
 export type SourcingShipmentMethod = "SEA" | "AIR" | "COURIER" | "ROAD" | "OTHER";
 
+/** Landed cost → cost price per unit → recommended selling price at the target GROSS margin. Cents are in the order's currency; per-unit values are unrounded (fractions of a cent). */
+export interface SourcingPricing {
+  targetMarginPercent: number;
+  landed: { manufacturingCents: number; inspectionCents: number; freightCents: number; otherCents: number; totalCents: number };
+  unit:
+    | {
+        ok: true;
+        costPerUnitCents: number;
+        sellingPricePerUnitCents: number;
+        grossProfitPerUnitCents: number;
+        costPerUnitAudEstCents: number | null;
+        sellingPricePerUnitAudEstCents: number | null;
+      }
+    | { ok: false; reason: "MISSING_QUANTITY" | "INVALID_QUANTITY" | "INVALID_COST" | "NO_COST" | "INVALID_MARGIN"; message: string };
+}
+
 /** One row in the Sourcing list. Money is whole cents in `currency` (…AudEstCents are estimates in AUD). */
 export interface SourcingSummary {
   id: string;
@@ -165,6 +181,7 @@ export interface SourcingSummary {
   unitCostCents: number;
   currency: string;
   exchangeRateToAud: number | null;
+  targetMarginPercent: number;
   orderDate: string | null;
   expectedDate: string | null;
   deliveredDate: string | null;
@@ -179,6 +196,7 @@ export interface SourcingSummary {
   balanceCents: number;
   totalCostAudEstCents: number;
   balanceAudEstCents: number;
+  pricing: SourcingPricing;
   paymentCount: number;
   inspectionCount: number;
   shipmentCount: number;

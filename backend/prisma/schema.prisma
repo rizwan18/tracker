@@ -662,6 +662,9 @@ model SourcingRecord {
   /// Multiply an amount in `currency` by this to estimate its value in AUD. Only used (and only
   /// meaningful) when currency isn't AUD; null means no conversion has been recorded yet.
   exchangeRateToAud Float?
+  /// Target GROSS margin (not markup) used to recommend a selling price: price = cost per unit ÷ (1 − margin).
+  /// 0 ≤ value < 100. Existing records get the 40% default when the column is added.
+  targetMarginPercent Float @default(40)
   orderDate         DateTime?
   expectedDate      DateTime? // expected ready/delivery date
   deliveredDate     DateTime?
