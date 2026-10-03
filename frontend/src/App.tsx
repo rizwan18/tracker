@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { PortfolioProvider } from "./context/PortfolioContext";
 import { FinancialYearProvider } from "./context/FinancialYearContext";
@@ -11,7 +11,6 @@ import RegisterPage from "./pages/RegisterPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import SelectPortfolioPage from "./pages/SelectPortfolioPage";
 import HomePage from "./pages/HomePage";
-import DataPage from "./pages/DataPage";
 import ImportExportPage from "./pages/ImportExportPage";
 import { RequireCompany } from "./components/RequireCompany";
 import BusinessEntriesPage from "./pages/business/BusinessEntriesPage";
@@ -91,7 +90,8 @@ export default function App() {
               <Route path="/reminders" element={<RemindersPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/import-export" element={<ImportExportPage />} />
-              <Route path="/data" element={<DataPage />} />
+              {/* The old "Your data" page now lives on Import/Export (Backup & restore), so existing links and bookmarks still land somewhere useful. */}
+              <Route path="/data" element={<Navigate to="/import-export?section=backup" replace />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Routes>

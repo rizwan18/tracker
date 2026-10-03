@@ -30,7 +30,7 @@ export default function PropertiesPage() {
       <SectionHeading title="Properties" subtitle="Track your investment properties and your home (principal place of residence)." action={
           <div className="flex flex-wrap gap-2">
             <Link to="/import-export?section=properties">
-              <Button variant="secondary">Import / Export</Button>
+              <Button variant="secondary">Import/Export</Button>
             </Link>
             <Button onClick={() => setShowForm(true)}>+ Add property</Button>
           </div>

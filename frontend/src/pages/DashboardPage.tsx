@@ -58,8 +58,8 @@ export default function DashboardPage() {
             <Link to="/money">
               <Button>+ Add income or expense</Button>
             </Link>
-            <Link to="/data">
-              <Button variant="secondary">Your data</Button>
+            <Link to="/import-export">
+              <Button variant="secondary">Import/Export</Button>
             </Link>
           </div>
         </div>
@@ -90,7 +90,7 @@ export default function DashboardPage() {
             <StartTile to="/properties" icon="🏘️" label="Add a property" />
             <StartTile to="/investments" icon="📈" label="Add an investment" />
             <StartTile to="/money" icon="💷" label="Record income or an expense" />
-            <StartTile to="/data" icon="💾" label="Import my data" />
+            <StartTile to="/import-export" icon="💾" label="Import my data" />
           </div>
         </Card>
       ) : (

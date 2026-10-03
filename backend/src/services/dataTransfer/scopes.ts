@@ -7,7 +7,7 @@ const NOUN: Record<Exclude<ExportScope, "all">, string> = { properties: "propert
 
 /**
  * Limits an already-parsed file to one portfolio. Anything else in the file is left out (and named,
- * so nothing is dropped silently); it can still be brought in from the "Your data" page.
+ * so nothing is dropped silently); it can still be brought in from Backup & restore on the Import/Export page.
  * Throws a friendly error when the file has nothing for this portfolio.
  */
 export function restrictToScope(parsed: ParsedFile, scope: Exclude<ExportScope, "all">): { parsed: ParsedFile; ignored: SectionName[] } {
@@ -18,7 +18,7 @@ export function restrictToScope(parsed: ParsedFile, scope: Exclude<ExportScope, 
   if (own.length === 0) {
     const others = withRows.map((s) => SECTION_LABELS[s].toLowerCase());
     throw new FriendlyError(
-      `This file doesn't contain any ${NOUN[scope]} data.${others.length > 0 ? ` It has: ${others.join(", ")}.` : ""} Please choose a ${EXPORT_SCOPES[scope].label} CSV exported from the ${PLACE[scope]}, or a full backup from “Your data”.`,
+      `This file doesn't contain any ${NOUN[scope]} data.${others.length > 0 ? ` It has: ${others.join(", ")}.` : ""} Please choose a ${EXPORT_SCOPES[scope].label} CSV exported from the ${PLACE[scope]}, or a full backup from Backup & restore.`,
       400
     );
   }
@@ -39,5 +39,5 @@ export function restrictToScope(parsed: ParsedFile, scope: Exclude<ExportScope, 
 
 export function ignoredSectionsWarning(ignored: SectionName[], scope: Exclude<ExportScope, "all">): string | null {
   if (ignored.length === 0) return null;
-  return `This file also contains ${ignored.map((s) => SECTION_LABELS[s].toLowerCase()).join(", ")}. Those weren't imported here — this import only covers your ${EXPORT_SCOPES[scope].label}. Use “Your data” to restore everything.`;
+  return `This file also contains ${ignored.map((s) => SECTION_LABELS[s].toLowerCase()).join(", ")}. Those weren't imported here — this import only covers your ${EXPORT_SCOPES[scope].label}. Use Backup & restore to restore everything.`;
 }

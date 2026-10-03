@@ -10,7 +10,7 @@ const COPY = {
     title: "Property Portfolio",
     what: "property portfolio",
     text: "Export your property portfolio to a CSV file, or import properties from a CSV you exported here. Each property comes with its ownership, rental schedule lines, yearly rental details, manager details and picture links.",
-    footnote: "Rent and expense entries and bills aren't part of this file — they're in “Your data”.",
+    footnote: "Rent and expense entries and bills aren't part of this file — they're in the backup below.",
     exportLabel: "Export property portfolio CSV",
     importLabel: "Import property portfolio CSV",
     viewTo: "/properties",
@@ -29,9 +29,9 @@ const COPY = {
 } as const;
 
 /**
- * Export/import of one portfolio. It is the same download/import as "Your data" (same file format,
+ * Export/import of one portfolio. It is the same download/import as Backup & restore (same file format,
  * same review-before-importing step, same rules: only missing items are added and nothing existing
- * is changed) limited to that portfolio. The single home for this UI is the Import / Export page;
+ * is changed) limited to that portfolio. The single home for this UI is the Import/Export page;
  * the Properties and Investments dashboards only link to it.
  */
 export function PortfolioDataPanel({ scope, highlighted = false, onImported }: { scope: PortfolioScope; highlighted?: boolean; onImported?: () => void }) {

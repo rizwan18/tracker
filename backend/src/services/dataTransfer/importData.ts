@@ -157,7 +157,7 @@ export function describePlan(plan: ImportPlan): ImportPreview {
 
 /**
  * Parse + plan (+ apply). Shared by the route so the dry-run and the real import use exactly the same steps.
- * `scope` limits it to one portfolio (properties or investments); "all" is the "Your data" import.
+ * `scope` limits it to one portfolio (properties or investments); "all" is the Backup & restore import.
  */
 export async function runImport(csv: string, householdId: string, userId: string, opts: { dryRun: boolean; includeProfile: boolean; scope?: ExportScope }) {
   const scope = opts.scope ?? "all";

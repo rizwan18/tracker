@@ -91,7 +91,7 @@ describe("1. property portfolio export", () => {
     expect(csv.split("\r\n")[0]).toBe("Revenue Expense Tracker export,1");
     expect(csv).toContain("Contents,property portfolio");
   });
-  it("uses exactly the same columns as the full 'Your data' export for those sections", () => {
+  it("uses exactly the same columns as the full Backup & restore export for those sections", () => {
     for (const name of PROPERTY_SECTIONS) expect(csv).toContain(`[${name}]\r\n${SECTION_COLUMNS[name].join(",")}\r\n`);
   });
   it("exports every property with its own details, and only the categories its rental lines use", () => {
@@ -101,9 +101,9 @@ describe("1. property portfolio export", () => {
     expect(csv).toContain("Council Rates");
     expect(csv).toContain("Water Rates");
     expect(csv).not.toContain("Groceries");
-    expect(csv).not.toContain("Rent — July"); // income/expense entries belong to "Your data"
+    expect(csv).not.toContain("Rent — July"); // income/expense entries belong to Backup & restore
   });
-  it("leaves the full 'Your data' export exactly as it was (all sections, no extra line)", () => {
+  it("leaves the full Backup & restore export exactly as it was (all sections, no extra line)", () => {
     const all = csvOf("all");
     expect(NAMES(all)).toEqual([...SECTION_ORDER]);
     expect(all).not.toContain("Contents,");
@@ -321,7 +321,7 @@ describe("13/16. portfolio imports stay inside their portfolio", () => {
     expect(p.creates.bills).toHaveLength(0);
     expect(p.creates.accounts).toHaveLength(0);
     expect(p.profile).toBeNull();
-    expect(ignoredSectionsWarning(ignored, "properties")).toContain("Use “Your data” to restore everything");
+    expect(ignoredSectionsWarning(ignored, "properties")).toContain("Use Backup & restore to restore everything");
   });
   it("an investment import of a full backup leaves properties, money and profile alone", () => {
     const { parsed } = restrictToScope(parseExportFile(full), "investments");

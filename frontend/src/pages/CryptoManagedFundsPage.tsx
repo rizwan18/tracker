@@ -49,7 +49,7 @@ export default function CryptoManagedFundsPage() {
               <Button variant="secondary">View Trades</Button>
             </Link>
             <Link to="/import-export?section=investments">
-              <Button variant="secondary">Import / Export</Button>
+              <Button variant="secondary">Import/Export</Button>
             </Link>
             <Button onClick={() => setShowForm(true)}>+ Add investment</Button>
           </div>
