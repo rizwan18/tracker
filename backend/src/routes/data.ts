@@ -37,7 +37,7 @@ const importSchema = z.object({
   dryRun: z.boolean().default(true),
   /** Also apply the name, timezone and display preferences saved in the file. */
   includeProfile: z.boolean().default(true),
-  /** all = the "Your data" import; properties / investments = a portfolio import from that dashboard. */
+  /** all = the Backup & restore import; properties / investments = a portfolio import from that dashboard. */
   scope: z.enum(["all", "properties", "investments"]).default("all"),
 });
 

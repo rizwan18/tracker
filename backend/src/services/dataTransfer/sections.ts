@@ -109,7 +109,7 @@ export const SECTION_LABELS: Record<SectionName, string> = {
 };
 
 /**
- * What an export/import can be limited to. "all" is the "Your data" backup (every section).
+ * What an export/import can be limited to. "all" is the Backup & restore export (every section).
  * The two portfolio scopes use exactly the same sectioned format and the same columns —
  * they simply carry the sections that belong to that portfolio, so a portfolio file and a full
  * backup can be imported into either place.

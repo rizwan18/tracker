@@ -2,12 +2,12 @@ import { Button, Card } from "./ui";
 import { ImportDialogs, useCsvTransfer } from "./CsvTransfer";
 
 /**
- * "Your data": download everything as one CSV, and bring it back from that same
+ * Backup & restore: download everything as one CSV, and bring it back from that same
  * file later. Importing shows what it will do first, adds only what's missing
  * (so importing the same file twice changes nothing) and never overwrites what
  * is already there.
  */
-export function DataBackupCard({ onImported }: { onImported?: () => void }) {
+export function BackupRestoreCard({ onImported }: { onImported?: () => void }) {
   const transfer = useCsvTransfer({ scope: "all", onImported });
   const { fileInput, exporting, exportError, stage, importError, handleExport, handleFile, chooseFile } = transfer;
 

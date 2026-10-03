@@ -15,8 +15,7 @@ const PRIMARY_NAV = [
   { to: "/holidays", label: "Holidays", icon: "✈️" },
   { to: "/reminders", label: "Reminders", icon: "🔔" },
   { to: "/reports", label: "Reports", icon: "📊" },
-  { to: "/import-export", label: "Import / Export", icon: "📥" },
-  { to: "/data", label: "Your data", icon: "💾" },
+  { to: "/import-export", label: "Import/Export", icon: "📥" },
   { to: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
@@ -32,8 +31,7 @@ const COMPANY_NAV = [
   { to: "/properties", label: "Properties", icon: "🏘" },
   { to: "/investments", label: "Shares and ETFs", icon: "📈" },
   { to: "/crypto-managed-funds", label: "Crypto, Managed Funds, Term Deposit", icon: "🪙" },
-  { to: "/import-export", label: "Import / Export", icon: "📥" },
-  { to: "/data", label: "Your data", icon: "💾" },
+  { to: "/import-export", label: "Import/Export", icon: "📥" },
   { to: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

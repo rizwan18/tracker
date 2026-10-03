@@ -78,7 +78,7 @@ export default function InvestmentsPage() {
               <Button variant="secondary">View Trades</Button>
             </Link>
             <Link to="/import-export?section=investments">
-              <Button variant="secondary">Import / Export</Button>
+              <Button variant="secondary">Import/Export</Button>
             </Link>
             <Link to="/investments/price-lookup">
               <Button variant="secondary">Check Security Price</Button>

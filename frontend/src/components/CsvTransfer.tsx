@@ -8,7 +8,7 @@ import { Modal } from "./Modal";
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 /**
- * What a CSV export/import covers. "all" is the whole "Your data" backup; the other two are the
+ * What a CSV export/import covers. "all" is the whole Backup & restore; the other two are the
  * portfolio dashboards. They all use the same file format and the same server routes — the scope
  * only chooses which sections are written or read.
  */
@@ -28,7 +28,7 @@ export type CsvStage =
   | { name: "done"; result: ImportResult };
 
 /**
- * Download and import of a CSV, shared by "Your data" and the portfolio dashboards.
+ * Download and import of a CSV, shared by Backup & restore and the portfolio sections.
  * Importing always shows what it will do first (a dry run), adds only what's missing and
  * never changes what is already there.
  */
@@ -39,7 +39,7 @@ export function useCsvTransfer({ scope = "all", onImported }: { scope?: CsvScope
   const [stage, setStage] = useState<CsvStage>({ name: "idle" });
   const [importError, setImportError] = useState<string | null>(null);
   const [includeProfile, setIncludeProfile] = useState(true);
-  // Only portfolio imports name their scope, so the "Your data" requests are exactly what they always were.
+  // Only portfolio imports name their scope, so the backup requests are exactly what they always were.
   const scopeBody = scope === "all" ? {} : { scope };
 
   async function handleExport() {
