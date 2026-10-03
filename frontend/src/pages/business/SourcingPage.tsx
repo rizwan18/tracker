@@ -8,7 +8,7 @@ import { Modal } from "../../components/Modal";
 import { SourcingRecordForm } from "../../components/business/SourcingForms";
 import { formatDate } from "../../lib/format";
 import { formatCents } from "../../lib/money";
-import { formatOrderMoney, ORIGIN_LABELS, STATUS_BADGE, STATUS_LABELS, STATUS_ORDER } from "../../lib/sourcing";
+import { formatOrderMoney, formatPercent, ORIGIN_LABELS, STATUS_BADGE, STATUS_LABELS, STATUS_ORDER } from "../../lib/sourcing";
 
 const EMPTY_TOTALS: SourcingTotals = { openCount: 0, totalCostAudEstCents: 0, paidAudEstCents: 0, balanceAudEstCents: 0 };
 
@@ -153,6 +153,15 @@ export default function SourcingPage() {
                         {r.balanceCents > 0 ? `${formatOrderMoney(r.balanceCents, r.currency)} to pay` : r.balanceCents < 0 ? "Overpaid" : "Paid in full"}
                       </p>
                     </div>
+                    {r.pricing.unit.ok && (
+                      <div className="text-right min-w-[11rem] basis-full sm:basis-auto" title={`Cost per unit, and the selling price that earns a ${formatPercent(r.pricing.targetMarginPercent)} gross margin`}>
+                        <p className="text-xs text-[var(--color-ink-soft)]">Cost / unit {formatOrderMoney(r.pricing.unit.costPerUnitCents, r.currency)}</p>
+                        <p className="text-sm font-semibold text-[var(--color-eucalyptus-dark)]">
+                          Sell at {formatOrderMoney(r.pricing.unit.sellingPricePerUnitCents, r.currency)}
+                          <span className="font-normal text-xs text-[var(--color-ink-soft)]"> · {formatPercent(r.pricing.targetMarginPercent)} margin</span>
+                        </p>
+                      </div>
+                    )}
                   </Link>
                 </li>
               );

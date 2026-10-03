@@ -76,6 +76,7 @@ export function SourcingRecordForm({ initial, onSaved, onCancel }: { initial?: S
   const [unitCost, setUnitCost] = useState(initial ? centsToInput(initial.unitCostCents) : "");
   const [currency, setCurrency] = useState(initial?.currency ?? "AUD");
   const [rate, setRate] = useState(initial?.exchangeRateToAud ? String(initial.exchangeRateToAud) : "");
+  const [margin, setMargin] = useState(String(initial?.targetMarginPercent ?? 40));
   const [orderDate, setOrderDate] = useState(toInputDate(initial?.orderDate));
   const [expectedDate, setExpectedDate] = useState(toInputDate(initial?.expectedDate));
   const [deliveredDate, setDeliveredDate] = useState(toInputDate(initial?.deliveredDate));
@@ -100,8 +101,12 @@ export function SourcingRecordForm({ initial, onSaved, onCancel }: { initial?: S
     const fx = foreign && rate.trim() !== "" ? parseFloat(rate) : null;
     if (foreign && rate.trim() !== "" && (!Number.isFinite(fx) || (fx as number) <= 0)) return setError("Please enter the exchange rate as a number, like 1.52.");
 
+    const marginPercent = margin.trim() === "" ? 40 : Number(margin);
+    if (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent >= 100) return setError("Please enter the target gross margin as a percentage from 0 to under 100, like 40.");
+
     await run(async () => {
       const body = {
+        targetMarginPercent: marginPercent,
         origin, status, reference: blankToNull(reference), itemDescription: itemDescription.trim(), quantity: qty, unitCostCents, currency: code, exchangeRateToAud: fx,
         orderDate: blankToNull(orderDate), expectedDate: blankToNull(expectedDate), deliveredDate: blankToNull(deliveredDate),
         supplierName: supplierName.trim(), supplierCountry: blankToNull(supplierCountry), supplierContactName: blankToNull(supplierContactName),
@@ -142,8 +147,11 @@ export function SourcingRecordForm({ initial, onSaved, onCancel }: { initial?: S
           <input id="so-currency" list="so-currencies" value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputClass} maxLength={3} required />
           <datalist id="so-currencies">{COMMON_CURRENCIES.map((c) => <option key={c} value={c} />)}</datalist>
         </Field>
-        <Field label={`Cost per unit (${code || "…"})`} htmlFor="so-unit"><input id="so-unit" inputMode="decimal" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} className={inputClass} placeholder="0.00" /></Field>
+        <Field label={`Supplier price per unit (${code || "…"})`} htmlFor="so-unit"><input id="so-unit" inputMode="decimal" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} className={inputClass} placeholder="0.00" /></Field>
       </div>
+      <Field label="Target gross margin (%)" htmlFor="so-margin" hint="Used to recommend a selling price: cost per unit ÷ (1 − margin). 40% margin means $6.00 cost → $10.00 price (not a 40% markup).">
+        <input id="so-margin" inputMode="decimal" value={margin} onChange={(e) => setMargin(e.target.value)} className={inputClass} placeholder="40" />
+      </Field>
       {foreign && (
         <Field label={`Exchange rate (1 ${code || "unit"} = ? AUD)`} htmlFor="so-rate" hint="Optional. Only used to show an estimate in Australian dollars — your figures stay in the supplier's currency.">
           <input id="so-rate" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} className={inputClass} placeholder="e.g. 1.52" />

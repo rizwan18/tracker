@@ -31,3 +31,8 @@ export const COMMON_CURRENCIES = ["AUD", "USD", "CNY", "EUR", "GBP", "NZD", "JPY
 export function formatOrderMoney(cents: number, currency: string): string {
   return formatCurrencyIn(cents / 100, currency);
 }
+
+/** 40 → "40%", 37.5 → "37.5%" (no trailing zeros). */
+export function formatPercent(value: number): string {
+  return `${Number(value.toFixed(2))}%`;
+}

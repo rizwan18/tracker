@@ -6,6 +6,7 @@ import { requireCompanyPortfolio, householdOf } from "../middleware/requireCompa
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { sourcingRecordSchema, sourcingPaymentSchema, sourcingInspectionSchema, sourcingShipmentSchema } from "../lib/validation";
 import { computeSourcingCosts, toAudEstimateCents } from "../services/business/sourcing";
+import { buildPricingDto } from "../services/business/pricing";
 import { parseDay } from "../services/business/ledgerStore";
 
 const router = Router();
@@ -28,15 +29,16 @@ const detailInclude = {
 
 type RecordWithChildren = Prisma.SourcingRecordGetPayload<{ include: typeof detailInclude }>;
 
-function costDto(r: { quantity: number; unitCostCents: number; currency: string; exchangeRateToAud: number | null }, payments: { amountCents: number; feeCents: number }[], inspections: { costCents: number }[], shipments: { freightCostCents: number; customsDutyCents: number; insuranceCostCents: number; otherCostCents: number }[]) {
-  const costs = computeSourcingCosts({ quantity: r.quantity, unitCostCents: r.unitCostCents, payments, inspections, shipments });
-  return { ...costs, totalCostAudEstCents: toAudEstimateCents(costs.totalCostCents, r.currency, r.exchangeRateToAud), balanceAudEstCents: toAudEstimateCents(costs.balanceCents, r.currency, r.exchangeRateToAud) };
+function costDto(r: { quantity: number; unitCostCents: number; currency: string; exchangeRateToAud: number | null; targetMarginPercent: number }, payments: { amountCents: number; feeCents: number }[], inspections: { costCents: number }[], shipments: { freightCostCents: number; customsDutyCents: number; insuranceCostCents: number; otherCostCents: number }[]) {
+  const inputs = { quantity: r.quantity, unitCostCents: r.unitCostCents, payments, inspections, shipments };
+  const costs = computeSourcingCosts(inputs);
+  return { ...costs, pricing: buildPricingDto(inputs, { currency: r.currency, exchangeRateToAud: r.exchangeRateToAud, targetMarginPercent: r.targetMarginPercent }), totalCostAudEstCents: toAudEstimateCents(costs.totalCostCents, r.currency, r.exchangeRateToAud), balanceAudEstCents: toAudEstimateCents(costs.balanceCents, r.currency, r.exchangeRateToAud) };
 }
 
 function summaryDto(r: RecordWithChildren) {
   return {
     id: r.id, origin: r.origin, status: r.status, reference: r.reference, itemDescription: r.itemDescription, quantity: r.quantity,
-    unitCostCents: r.unitCostCents, currency: r.currency, exchangeRateToAud: r.exchangeRateToAud,
+    unitCostCents: r.unitCostCents, currency: r.currency, exchangeRateToAud: r.exchangeRateToAud, targetMarginPercent: r.targetMarginPercent,
     orderDate: iso(r.orderDate), expectedDate: iso(r.expectedDate), deliveredDate: iso(r.deliveredDate),
     supplierName: r.supplierName, supplierCountry: r.supplierCountry,
     ...costDto(r, r.payments, r.inspections, r.shipments),

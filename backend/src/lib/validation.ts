@@ -288,6 +288,8 @@ export const sourcingRecordSchema = z
     unitCostCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS),
     currency: currencyCode,
     exchangeRateToAud: z.coerce.number().positive("The exchange rate must be more than zero.").max(1000).optional().nullable(),
+    // Gross margin target. Left out = unchanged on edit / 40% on create (the column default).
+    targetMarginPercent: z.number({ invalid_type_error: "Please enter the target margin as a number, like 40." }).min(0, "The target margin can't be negative.").lt(100, "The target margin must be below 100%.").optional(),
     orderDate: z.coerce.date().optional().nullable(),
     expectedDate: z.coerce.date().optional().nullable(),
     deliveredDate: z.coerce.date().optional().nullable(),
