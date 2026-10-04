@@ -36,3 +36,10 @@ export function formatOrderMoney(cents: number, currency: string): string {
 export function formatPercent(value: number): string {
   return `${Number(value.toFixed(2))}%`;
 }
+
+/** Where a sourcing order lives (it sits under its product/SKU). The older /business/sourcing/:id address still works too. */
+export const orderPath = (id: string) => `/business/products/orders/${id}`;
+export const productPath = (id: string) => `/business/products/${id}`;
+
+/** The signed-in API address of a product's picture. `v` changes when the picture is replaced, so it's never served stale from cache. */
+export const productImagePath = (p: { id: string; imageVersion: number }, size: "thumb" | "full") => `/business/products/${p.id}/image?size=${size}&v=${p.imageVersion}`;

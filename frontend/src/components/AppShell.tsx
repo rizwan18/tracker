@@ -24,7 +24,7 @@ const COMPANY_NAV = [
   { to: "/", label: "Dashboard", icon: "🏠", end: true },
   { to: "/business/sales", label: "Sales", icon: "💰" },
   { to: "/business/expenses", label: "Expenses", icon: "💳" },
-  { to: "/business/sourcing", label: "Sourcing", icon: "📦" },
+  { to: "/business/products", label: "Products/SKU", icon: "📦" },
   { to: "/business/reports", label: "Reports", icon: "📊" },
   { to: "/business/accounts", label: "Accounts", icon: "📒" },
   { to: "/business/journal", label: "Journal", icon: "✍️" },

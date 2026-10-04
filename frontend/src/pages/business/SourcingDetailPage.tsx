@@ -5,11 +5,12 @@ import type { SourcingDetail, SourcingDocument } from "../../api/businessTypes";
 import { useBusinessBasics } from "../../hooks/useBusiness";
 import { Button, Card, EmptyState, SectionHeading, StatTile, TabPanel, Tabs } from "../../components/ui";
 import { Modal } from "../../components/Modal";
+import { ProductImage } from "../../components/business/ProductImage";
 import { SourcingPricingCard } from "../../components/business/SourcingPricingCard";
 import { SourcingInspectionForm, SourcingPaymentForm, SourcingRecordForm, SourcingShipmentForm } from "../../components/business/SourcingForms";
 import { formatCurrencyIn, formatDate } from "../../lib/format";
 import {
-  formatOrderMoney, INSPECTION_RESULT_LABELS, ORIGIN_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS, SHIPMENT_METHOD_LABELS, STATUS_BADGE, STATUS_LABELS,
+  formatOrderMoney, INSPECTION_RESULT_LABELS, ORIGIN_LABELS, productPath, PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS, SHIPMENT_METHOD_LABELS, STATUS_BADGE, STATUS_LABELS,
 } from "../../lib/sourcing";
 
 type Tab = "overview" | "payments" | "inspections" | "shipments" | "documents";
@@ -88,7 +89,7 @@ export default function SourcingDetailPage() {
       setRecord(await api.get<SourcingDetail>(`/business/sourcing/${id}`));
       setError(null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "We couldn't load this sourcing record.");
+      setError(err instanceof ApiError ? err.message : "We couldn't load this sourcing order.");
     }
   }, [id]);
 
@@ -100,7 +101,7 @@ export default function SourcingDetailPage() {
     return (
       <div className="space-y-4">
         <p role="alert" className="text-[var(--color-brick)]">{error}</p>
-        <Link to="/business/sourcing" className="text-[var(--color-eucalyptus)] font-medium">← Back to Sourcing</Link>
+        <Link to="/business/products" className="text-[var(--color-eucalyptus)] font-medium">← Back to Products/SKU</Link>
       </div>
     );
   }
@@ -134,10 +135,10 @@ export default function SourcingDetailPage() {
   }
 
   async function removeRecord() {
-    if (!confirm(`Delete “${r.itemDescription}” and all of its payments, inspections and shipments? This can't be undone.`)) return;
+    if (!confirm(`Delete this sourcing order (“${r.itemDescription}”) and all of its payments, inspections and shipments? The product itself is kept. This can't be undone.`)) return;
     await act(async () => {
       await api.delete(`/business/sourcing/${r.id}`);
-      navigate("/business/sourcing");
+      navigate(r.productId ? productPath(r.productId) : "/business/products");
     });
   }
 
@@ -191,7 +192,21 @@ export default function SourcingDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link to="/business/sourcing" className="text-sm text-[var(--color-eucalyptus)] font-medium">← All sourcing</Link>
+      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--color-ink-soft)]">
+        <Link to="/business/products" className="text-[var(--color-eucalyptus)] font-medium">Products/SKU</Link>
+        {r.product && (
+          <>
+            <span aria-hidden>›</span>
+            <Link to={productPath(r.product.id)} className="inline-flex items-center gap-2 text-[var(--color-eucalyptus)] font-medium">
+              <ProductImage product={r.product} size={28} />
+              {r.product.name}
+              {r.product.sku ? <span className="font-normal text-[var(--color-ink-soft)]">({r.product.sku})</span> : null}
+            </Link>
+          </>
+        )}
+        <span aria-hidden>›</span>
+        <span aria-current="page">Sourcing order{r.reference ? ` #${r.reference}` : ""}</span>
+      </nav>
       <SectionHeading
         title={r.itemDescription}
         subtitle={`${r.supplierName}${r.supplierCountry ? ` · ${r.supplierCountry}` : ""}${r.reference ? ` · #${r.reference}` : ""}`}
@@ -394,7 +409,7 @@ export default function SourcingDetailPage() {
         </TabPanel>
       )}
 
-      {dialog === "edit" && <Modal title="Edit sourcing record" onClose={close}><SourcingRecordForm initial={r} onCancel={close} onSaved={saved} /></Modal>}
+      {dialog === "edit" && <Modal title="Edit sourcing order" onClose={close}><SourcingRecordForm initial={r} onCancel={close} onSaved={saved} /></Modal>}
       {dialog === "payment" && (
         <Modal title={itemId ? "Edit payment" : "Record a payment"} onClose={close}>
           <SourcingPaymentForm recordId={r.id} currency={r.currency} banks={banks} defaultDate={today} initial={r.payments.find((p) => p.id === itemId)} onCancel={close} onSaved={saved} />

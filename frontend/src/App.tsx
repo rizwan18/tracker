@@ -17,7 +17,8 @@ import BusinessEntriesPage from "./pages/business/BusinessEntriesPage";
 import BusinessAccountsPage from "./pages/business/BusinessAccountsPage";
 import BusinessJournalPage from "./pages/business/BusinessJournalPage";
 import BusinessReportsPage from "./pages/business/BusinessReportsPage";
-import SourcingPage from "./pages/business/SourcingPage";
+import ProductsPage from "./pages/business/ProductsPage";
+import ProductDetailPage from "./pages/business/ProductDetailPage";
 import SourcingDetailPage from "./pages/business/SourcingDetailPage";
 import MoneyPage from "./pages/MoneyPage";
 import PropertiesPage from "./pages/PropertiesPage";
@@ -71,7 +72,11 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/business/sales" element={<RequireCompany><BusinessEntriesPage kind="INCOME" /></RequireCompany>} />
               <Route path="/business/expenses" element={<RequireCompany><BusinessEntriesPage kind="EXPENSE" /></RequireCompany>} />
-              <Route path="/business/sourcing" element={<RequireCompany><SourcingPage /></RequireCompany>} />
+              <Route path="/business/products" element={<RequireCompany><ProductsPage /></RequireCompany>} />
+              <Route path="/business/products/orders/:id" element={<RequireCompany><SourcingDetailPage /></RequireCompany>} />
+              <Route path="/business/products/:id" element={<RequireCompany><ProductDetailPage /></RequireCompany>} />
+              {/* The old Sourcing tab is now Products/SKU: its list address redirects, and old order links (/business/sourcing/:id) still open the order. */}
+              <Route path="/business/sourcing" element={<Navigate to="/business/products" replace />} />
               <Route path="/business/sourcing/:id" element={<RequireCompany><SourcingDetailPage /></RequireCompany>} />
               <Route path="/business/reports" element={<RequireCompany><BusinessReportsPage /></RequireCompany>} />
               <Route path="/business/accounts" element={<RequireCompany><BusinessAccountsPage /></RequireCompany>} />

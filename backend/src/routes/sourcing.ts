@@ -5,67 +5,13 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { requireCompanyPortfolio, householdOf } from "../middleware/requireCompanyPortfolio";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { sourcingRecordSchema, sourcingPaymentSchema, sourcingInspectionSchema, sourcingShipmentSchema } from "../lib/validation";
-import { computeSourcingCosts, toAudEstimateCents } from "../services/business/sourcing";
-import { buildPricingDto } from "../services/business/pricing";
+import { toAudEstimateCents } from "../services/business/sourcing";
+import { detailInclude, detailDto, summaryDto, type RecordWithChildren } from "../services/business/sourcingDto";
+import { ensureProductsBackfilled, findOrCreateProductByName, findOwnedProduct } from "../services/business/products";
 import { parseDay } from "../services/business/ledgerStore";
 
 const router = Router();
 router.use(requireAuth, requireCompanyPortfolio);
-
-const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
-
-// Shared column list for a document reference (used at record, payment and shipment level).
-const documentSelect = { id: true, fileName: true, fileType: true, createdAt: true } satisfies Prisma.DocumentSelect;
-
-const detailInclude = {
-  payments: {
-    orderBy: { date: "desc" as const },
-    include: { bankAccount: { select: { id: true, code: true, name: true } }, documents: { select: documentSelect } },
-  },
-  inspections: { orderBy: { date: "desc" as const } },
-  shipments: { orderBy: { createdAt: "desc" as const }, include: { documents: { select: documentSelect } } },
-  documents: { select: documentSelect },
-} satisfies Prisma.SourcingRecordInclude;
-
-type RecordWithChildren = Prisma.SourcingRecordGetPayload<{ include: typeof detailInclude }>;
-
-function costDto(r: { quantity: number; unitCostCents: number; currency: string; exchangeRateToAud: number | null; targetMarginPercent: number }, payments: { amountCents: number; feeCents: number }[], inspections: { costCents: number }[], shipments: { freightCostCents: number; customsDutyCents: number; insuranceCostCents: number; otherCostCents: number }[]) {
-  const inputs = { quantity: r.quantity, unitCostCents: r.unitCostCents, payments, inspections, shipments };
-  const costs = computeSourcingCosts(inputs);
-  return { ...costs, pricing: buildPricingDto(inputs, { currency: r.currency, exchangeRateToAud: r.exchangeRateToAud, targetMarginPercent: r.targetMarginPercent }), totalCostAudEstCents: toAudEstimateCents(costs.totalCostCents, r.currency, r.exchangeRateToAud), balanceAudEstCents: toAudEstimateCents(costs.balanceCents, r.currency, r.exchangeRateToAud) };
-}
-
-function summaryDto(r: RecordWithChildren) {
-  return {
-    id: r.id, origin: r.origin, status: r.status, reference: r.reference, itemDescription: r.itemDescription, quantity: r.quantity,
-    unitCostCents: r.unitCostCents, currency: r.currency, exchangeRateToAud: r.exchangeRateToAud, targetMarginPercent: r.targetMarginPercent,
-    orderDate: iso(r.orderDate), expectedDate: iso(r.expectedDate), deliveredDate: iso(r.deliveredDate),
-    supplierName: r.supplierName, supplierCountry: r.supplierCountry,
-    ...costDto(r, r.payments, r.inspections, r.shipments),
-    paymentCount: r.payments.length, inspectionCount: r.inspections.length, shipmentCount: r.shipments.length, documentCount: r.documents.length,
-    createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
-  };
-}
-
-function detailDto(r: RecordWithChildren) {
-  return {
-    ...summaryDto(r),
-    supplierContactName: r.supplierContactName, supplierEmail: r.supplierEmail, supplierPhone: r.supplierPhone, supplierWebsite: r.supplierWebsite, supplierAddress: r.supplierAddress,
-    notes: r.notes,
-    payments: r.payments.map((p) => ({
-      id: p.id, date: iso(p.date), amountCents: p.amountCents, feeCents: p.feeCents, type: p.type, method: p.method,
-      bankAccount: p.bankAccount, reference: p.reference, notes: p.notes,
-      documents: p.documents.map((d) => ({ id: d.id, fileName: d.fileName, fileType: d.fileType, createdAt: d.createdAt.toISOString() })),
-    })),
-    inspections: r.inspections.map((i) => ({ id: i.id, date: iso(i.date), inspector: i.inspector, result: i.result, costCents: i.costCents, notes: i.notes })),
-    shipments: r.shipments.map((s) => ({
-      id: s.id, method: s.method, carrier: s.carrier, trackingNumber: s.trackingNumber, shippedDate: iso(s.shippedDate), eta: iso(s.eta), arrivedDate: iso(s.arrivedDate),
-      freightCostCents: s.freightCostCents, customsDutyCents: s.customsDutyCents, insuranceCostCents: s.insuranceCostCents, otherCostCents: s.otherCostCents, notes: s.notes,
-      documents: s.documents.map((d) => ({ id: d.id, fileName: d.fileName, fileType: d.fileType, createdAt: d.createdAt.toISOString() })),
-    })),
-    documents: r.documents.map((d) => ({ id: d.id, fileName: d.fileName, fileType: d.fileType, createdAt: d.createdAt.toISOString() })),
-  };
-}
 
 /** A payment's "paid from" account, when given, must be an active bank/card account in this household. */
 async function assertBankAccount(householdId: string, bankAccountId: string | null | undefined) {
@@ -77,7 +23,7 @@ async function assertBankAccount(householdId: string, bankAccountId: string | nu
 async function findRecord(req: AuthedRequest): Promise<RecordWithChildren> {
   const householdId = householdOf(req);
   const record = await prisma.sourcingRecord.findFirst({ where: { id: req.params.id, householdId }, include: detailInclude });
-  if (!record) throw new FriendlyError("We couldn't find that sourcing record.", 404);
+  if (!record) throw new FriendlyError("We couldn't find that sourcing order.", 404);
   return record;
 }
 
@@ -86,6 +32,8 @@ router.get(
   "/",
   asyncHandler(async (req: AuthedRequest, res) => {
     const householdId = householdOf(req);
+    await ensureProductsBackfilled(prisma, householdId);
+    const productId = typeof req.query.productId === "string" && req.query.productId ? req.query.productId : undefined;
     const origin = req.query.origin === "OVERSEAS" || req.query.origin === "LOCAL" ? req.query.origin : undefined;
     const status = typeof req.query.status === "string" && req.query.status !== "ALL" ? req.query.status : undefined;
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
@@ -94,12 +42,13 @@ router.get(
 
     const where: Prisma.SourcingRecordWhereInput = {
       householdId,
+      ...(productId ? { productId } : {}),
       ...(origin ? { origin } : {}),
       ...(status ? { status } : {}),
       ...(from || to ? { orderDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
       // Plain `contains` (no `mode: "insensitive"`) to stay portable between Postgres and SQLite,
       // matching the convention used in routes/search.ts and routes/transactions.ts.
-      ...(q ? { OR: [{ itemDescription: { contains: q } }, { supplierName: { contains: q } }, { reference: { contains: q } }, { supplierCountry: { contains: q } }] } : {}),
+      ...(q ? { OR: [{ itemDescription: { contains: q } }, { supplierName: { contains: q } }, { reference: { contains: q } }, { supplierCountry: { contains: q } }, { product: { is: { OR: [{ name: { contains: q } }, { sku: { contains: q } }] } } }] } : {}),
     };
 
     const rows = await prisma.sourcingRecord.findMany({ where, include: detailInclude, orderBy: [{ orderDate: "desc" }, { createdAt: "desc" }] });
@@ -122,8 +71,11 @@ router.post(
   "/",
   asyncHandler(async (req: AuthedRequest, res) => {
     const householdId = householdOf(req);
-    const data = sourcingRecordSchema.parse(req.body);
-    const created = await prisma.sourcingRecord.create({ data: { householdId, createdById: req.userId!, ...data }, include: detailInclude });
+    const { productId, ...data } = sourcingRecordSchema.parse(req.body);
+    // An order always belongs to a product/SKU. With a productId it is added to that product (never a duplicate);
+    // without one (an older client) the product is matched — or created — from the item description.
+    const product = productId ? await findOwnedProduct(prisma, householdId, productId) : await findOrCreateProductByName(prisma, householdId, req.userId!, data.itemDescription);
+    const created = await prisma.sourcingRecord.create({ data: { householdId, createdById: req.userId!, productId: product.id, ...data }, include: detailInclude });
     res.status(201).json(detailDto(created));
   })
 );
@@ -132,6 +84,7 @@ router.post(
 router.get(
   "/:id",
   asyncHandler(async (req: AuthedRequest, res) => {
+    await ensureProductsBackfilled(prisma, householdOf(req));
     res.json(detailDto(await findRecord(req)));
   })
 );
@@ -140,8 +93,10 @@ router.put(
   "/:id",
   asyncHandler(async (req: AuthedRequest, res) => {
     const existing = await findRecord(req);
-    const data = sourcingRecordSchema.parse(req.body);
-    const updated = await prisma.sourcingRecord.update({ where: { id: existing.id }, data, include: detailInclude });
+    const { productId, ...data } = sourcingRecordSchema.parse(req.body);
+    // Left out = stays under its current product; given = moved to that product (which must be this household's).
+    if (productId && productId !== existing.productId) await findOwnedProduct(prisma, existing.householdId, productId);
+    const updated = await prisma.sourcingRecord.update({ where: { id: existing.id }, data: { ...data, ...(productId ? { productId } : {}) }, include: detailInclude });
     res.json(detailDto(updated));
   })
 );
@@ -151,7 +106,7 @@ router.delete(
   asyncHandler(async (req: AuthedRequest, res) => {
     const existing = await findRecord(req);
     await prisma.sourcingRecord.delete({ where: { id: existing.id } });
-    res.json({ message: "Sourcing record deleted." });
+    res.json({ message: "Sourcing order deleted." });
   })
 );
 

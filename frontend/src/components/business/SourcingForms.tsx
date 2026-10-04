@@ -1,7 +1,7 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError } from "../../api/client";
 import type {
-  LedgerAccount, SourcingDetail, SourcingInspection, SourcingInspectionResult, SourcingOrigin, SourcingPayment, SourcingPaymentMethod, SourcingPaymentType,
+  LedgerAccount, ProductOption, SourcingDetail, SourcingInspection, SourcingInspectionResult, SourcingOrigin, SourcingPayment, SourcingPaymentMethod, SourcingPaymentType,
   SourcingShipment, SourcingShipmentMethod, SourcingStatus,
 } from "../../api/businessTypes";
 import { Button, Field, inputClass } from "../ui";
@@ -67,11 +67,21 @@ const select = (id: string, value: string, onChange: (v: string) => void, option
 );
 
 // --------------------------------------------------------------------------- order
-export function SourcingRecordForm({ initial, onSaved, onCancel }: { initial?: SourcingDetail; onSaved: (record: SourcingDetail) => void; onCancel: () => void }) {
+/**
+ * A sourcing order. Adding one from a product's page passes `product`, so the order is created under that product
+ * (never a duplicate). Editing an existing order shows its product and lets it be moved to another product/SKU.
+ */
+export function SourcingRecordForm({ initial, product, onSaved, onCancel }: { initial?: SourcingDetail; product?: { id: string; name: string }; onSaved: (record: SourcingDetail) => void; onCancel: () => void }) {
+  const [productId, setProductId] = useState(initial?.productId ?? product?.id ?? "");
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+  useEffect(() => {
+    if (!initial) return;
+    api.get<ProductOption[]>("/business/products/options").then(setProductOptions).catch(() => setProductOptions([]));
+  }, [initial]);
   const [origin, setOrigin] = useState<SourcingOrigin>(initial?.origin ?? "OVERSEAS");
   const [status, setStatus] = useState<SourcingStatus>(initial?.status ?? "ENQUIRY");
   const [reference, setReference] = useState(initial?.reference ?? "");
-  const [itemDescription, setItemDescription] = useState(initial?.itemDescription ?? "");
+  const [itemDescription, setItemDescription] = useState(initial?.itemDescription ?? product?.name ?? "");
   const [quantity, setQuantity] = useState(initial ? String(initial.quantity) : "1");
   const [unitCost, setUnitCost] = useState(initial ? centsToInput(initial.unitCostCents) : "");
   const [currency, setCurrency] = useState(initial?.currency ?? "AUD");
@@ -106,6 +116,7 @@ export function SourcingRecordForm({ initial, onSaved, onCancel }: { initial?: S
 
     await run(async () => {
       const body = {
+        productId: productId || undefined,
         targetMarginPercent: marginPercent,
         origin, status, reference: blankToNull(reference), itemDescription: itemDescription.trim(), quantity: qty, unitCostCents, currency: code, exchangeRateToAud: fx,
         orderDate: blankToNull(orderDate), expectedDate: blankToNull(expectedDate), deliveredDate: blankToNull(deliveredDate),
@@ -119,7 +130,19 @@ export function SourcingRecordForm({ initial, onSaved, onCancel }: { initial?: S
   }
 
   return (
-    <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel={initial ? "Save changes" : "Add sourcing record"}>
+    <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel={initial ? "Save changes" : "Add sourcing order"}>
+      {product && !initial && (
+        <p className="text-sm text-[var(--color-ink-soft)]">
+          Product/SKU: <span className="font-medium text-[var(--color-ink)]">{product.name}</span>
+        </p>
+      )}
+      {initial && productOptions.length > 0 && (
+        <Field label="Product/SKU" htmlFor="so-product" hint="Move this order to a different product if it was filed under the wrong one.">
+          <select id="so-product" value={productId} onChange={(e) => setProductId(e.target.value)} className={inputClass}>
+            {productOptions.map((o) => <option key={o.id} value={o.id}>{o.name}{o.sku ? ` (${o.sku})` : ""}</option>)}
+          </select>
+        </Field>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Supplier is" htmlFor="so-origin">{select("so-origin", origin, (v) => setOrigin(v as SourcingOrigin), Object.entries(ORIGIN_LABELS))}</Field>
         <Field label="Status" htmlFor="so-status">{select("so-status", status, (v) => setStatus(v as SourcingStatus), Object.entries(STATUS_LABELS))}</Field>
@@ -139,7 +162,7 @@ export function SourcingRecordForm({ initial, onSaved, onCancel }: { initial?: S
       <Field label="Address (optional)" htmlFor="so-address"><input id="so-address" value={supplierAddress} onChange={(e) => setSupplierAddress(e.target.value)} className={inputClass} maxLength={300} /></Field>
 
       <p className="text-sm font-semibold text-[var(--color-ink)] pt-2">What you're buying</p>
-      <Field label="Item / product" htmlFor="so-item"><input id="so-item" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} className={inputClass} required maxLength={300} /></Field>
+      <Field label="Item description" htmlFor="so-item" hint="What this order is for, as it appears on the order or invoice."><input id="so-item" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} className={inputClass} required maxLength={300} /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Order / PO number (optional)" htmlFor="so-ref"><input id="so-ref" value={reference} onChange={(e) => setReference(e.target.value)} className={inputClass} maxLength={60} /></Field>
         <Field label="Quantity" htmlFor="so-qty"><input id="so-qty" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} className={inputClass} required /></Field>
