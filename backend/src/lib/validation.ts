@@ -278,8 +278,17 @@ const currencyCode = z
 const optionalSourcingText = (max: number) =>
   z.string().trim().max(max, `Please keep this under ${max} characters.`).optional().nullable().transform((v) => (v ? v : null));
 
+/** A product / SKU — the parent of its sourcing orders. The picture is uploaded separately. */
+export const sourcingProductSchema = z.object({
+  name: z.string({ required_error: "Please enter the product name.", invalid_type_error: "Please enter the product name." }).trim().min(1, "Please enter the product name.").max(150, "Please keep the product name under 150 characters."),
+  sku: optionalSourcingText(60),
+  description: optionalSourcingText(2000),
+});
+
 export const sourcingRecordSchema = z
   .object({
+    // Which product/SKU the order belongs to. Left out on create = matched/created from the item description.
+    productId: z.string().trim().min(1).max(60).optional(),
     origin: z.enum(SOURCING_ORIGINS),
     status: z.enum(SOURCING_STATUSES).default("ENQUIRY"),
     reference: optionalSourcingText(60),

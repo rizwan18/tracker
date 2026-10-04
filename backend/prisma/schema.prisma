@@ -60,6 +60,7 @@ model Household {
   documents     Document[]
   capitalGainDisposals CapitalGainDisposal[]
   sourcingRecords SourcingRecord[]
+  sourcingProducts SourcingProduct[]
   holidayPlans  HolidayPlan[]
 }
 
@@ -648,10 +649,41 @@ model JournalLine {
 // ---------------------------------------------------------------------------
 
 /// A purchase / sourcing order from a manufacturer or supplier, overseas or local.
+/// A product / SKU — the parent of its sourcing orders (one product, many orders). Product-level facts
+/// live here once rather than being repeated on every order. The optional picture belongs to the product:
+/// the file lives in Vercel Blob and is only ever served back through an authenticated route.
+model SourcingProduct {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String
+  sku         String?   // unique within a household when set (several products may have no SKU)
+  description String?
+
+  imageFileName    String?
+  imageContentType String?   // image/jpeg | image/png | image/webp (checked from the file's own bytes)
+  imagePath        String?   // blob URL of the full-size image
+  imageThumbPath   String?   // blob URL of a small version, when the browser made one
+  imageUpdatedAt   DateTime? // changes whenever the picture is added or replaced (used to refresh cached thumbnails)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders SourcingRecord[]
+
+  @@unique([householdId, sku])
+  @@index([householdId])
+}
+
 model SourcingRecord {
   id                String    @id @default(cuid())
   householdId       String
   household         Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  /// The product/SKU this order is for. Nullable only so existing orders survive the column being added —
+  /// they are linked to a product by the backfill (services/business/products.ts), which is safe to repeat.
+  productId         String?
+  product           SourcingProduct? @relation(fields: [productId], references: [id], onDelete: Restrict)
   origin            String    // OVERSEAS | LOCAL
   status            String    @default("ENQUIRY") // ENQUIRY | ORDERED | IN_PRODUCTION | SHIPPED | DELIVERED | CANCELLED
   reference         String?   // purchase order / order number
@@ -694,6 +726,7 @@ model SourcingRecord {
   @@index([householdId, status])
   @@index([householdId, origin])
   @@index([householdId, orderDate])
+  @@index([productId])
 }
 
 /// A payment made towards a sourcing order — orders are often paid in stages

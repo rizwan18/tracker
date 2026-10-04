@@ -170,9 +170,21 @@ export interface SourcingPricing {
     | { ok: false; reason: "MISSING_QUANTITY" | "INVALID_QUANTITY" | "INVALID_COST" | "NO_COST" | "INVALID_MARGIN"; message: string };
 }
 
+/** The parent product/SKU, as shown beside one of its sourcing orders. */
+export interface SourcingProductRef {
+  id: string;
+  name: string;
+  sku: string | null;
+  hasImage: boolean;
+  /** Changes whenever the picture is replaced — added to the image URL so a new picture isn't served from cache. */
+  imageVersion: number;
+}
+
 /** One row in the Sourcing list. Money is whole cents in `currency` (…AudEstCents are estimates in AUD). */
 export interface SourcingSummary {
   id: string;
+  productId: string | null;
+  product: SourcingProductRef | null;
   origin: SourcingOrigin;
   status: SourcingStatus;
   reference: string | null;
@@ -269,4 +281,49 @@ export interface SourcingTotals {
   totalCostAudEstCents: number;
   paidAudEstCents: number;
   balanceAudEstCents: number;
+}
+
+// ---------------------------------------------------------------------------
+// Products/SKU (Company Finance): the parent of its sourcing orders
+// ---------------------------------------------------------------------------
+
+/** One row in the Products/SKU list. Money is whole cents in `currency` (per-unit values are unrounded fractions of a cent). */
+export interface ProductSummary extends SourcingProductRef {
+  description: string | null;
+  imageFileName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  orderCount: number;
+  openOrderCount: number;
+  /** The latest order that isn't cancelled — where the product's current cost and selling price come from. */
+  latest: {
+    orderId: string;
+    status: SourcingStatus;
+    supplierName: string;
+    quantity: number;
+    currency: string;
+    orderDate: string | null;
+    totalCostCents: number;
+    costPerUnitCents: number | null;
+    sellingPricePerUnitCents: number | null;
+    targetMarginPercent: number;
+  } | null;
+}
+
+export interface ProductDetail extends ProductSummary {
+  orders: SourcingSummary[];
+}
+
+export interface ProductTotals {
+  productCount: number;
+  openCount: number;
+  totalCostAudEstCents: number;
+  paidAudEstCents: number;
+  balanceAudEstCents: number;
+}
+
+export interface ProductOption {
+  id: string;
+  name: string;
+  sku: string | null;
 }

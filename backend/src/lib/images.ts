@@ -30,3 +30,17 @@ export function safeFileName(original: string, type: ImageType): string {
   const base = original.replace(/\.[^.]*$/, "").replace(/[^A-Za-z0-9._ -]+/g, "").replace(/\.{2,}/g, ".").replace(/^\.+/, "").trim().slice(0, 60) || "photo";
   return `${base}.${EXTENSION_FOR[type]}`;
 }
+
+export type ImageCheck = { ok: true; type: ImageType } | { ok: false; code: "EMPTY" | "TOO_LARGE" | "NOT_AN_IMAGE"; message: string };
+
+/**
+ * Decides whether uploaded bytes may be stored as a picture: not empty, not over `maxBytes`, and really a
+ * JPG, PNG or WebP according to the file's own first bytes (never its name or the type the browser claimed).
+ */
+export function checkImageUpload(bytes: Uint8Array, maxBytes: number = MAX_PHOTO_BYTES): ImageCheck {
+  if (bytes.length === 0) return { ok: false, code: "EMPTY", message: "That file is empty. Please choose a picture." };
+  if (bytes.length > maxBytes) return { ok: false, code: "TOO_LARGE", message: `That picture is too large. Please choose one under ${(maxBytes / 1_000_000).toFixed(1)} MB.` };
+  const type = detectImageType(bytes);
+  if (!type) return { ok: false, code: "NOT_AN_IMAGE", message: "That doesn't look like a picture. Please choose a JPG, PNG or WebP image." };
+  return { ok: true, type };
+}
