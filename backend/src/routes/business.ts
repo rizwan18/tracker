@@ -6,7 +6,7 @@ import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { businessEntrySchema, businessPaySchema, businessProfileSchema, ledgerAccountSchema, ledgerAccountUpdateSchema, manualJournalSchema } from "../lib/validation";
 import { getFinancialYearId } from "../lib/financialYear";
 import { formatAbn } from "../lib/abn";
-import { computeGst } from "../services/business/gst";
+import { entryData } from "../services/business/entryData";
 import { resolveBasPeriod } from "../services/business/basPeriods";
 import { isFixedAsset } from "../services/business/chart";
 import { PostingError, assertBalanced } from "../services/business/posting";
@@ -197,27 +197,6 @@ async function checkEntryAccounts(householdId: string, data: { kind: string; acc
     const bank = data.bankAccountId ? await prisma.ledgerAccount.findFirst({ where: { id: data.bankAccountId, householdId, isActive: true, isBank: true } }) : null;
     if (!bank) throw new FriendlyError("Please choose a bank account (or card) from your chart of accounts.", 400);
   }
-}
-
-function entryData(data: ReturnType<typeof businessEntrySchema.parse>, gstRegistered: boolean) {
-  const g = computeGst(data.amountCents, data.gstMode, gstRegistered, data.gstCents ?? null);
-  const paid = data.status === "PAID";
-  return {
-    kind: data.kind,
-    date: data.date,
-    dueDate: data.dueDate ?? null,
-    description: data.description,
-    contactName: data.contactName || null,
-    reference: data.reference || null,
-    accountId: data.accountId,
-    totalCents: g.totalCents,
-    gstCents: g.gstCents,
-    gstMode: gstRegistered ? data.gstMode : "FREE",
-    status: data.status,
-    paidDate: paid ? data.paidDate ?? null : null,
-    bankAccountId: paid ? data.bankAccountId ?? null : null,
-    notes: data.notes || null,
-  };
 }
 
 router.post(

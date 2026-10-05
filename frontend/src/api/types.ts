@@ -458,3 +458,19 @@ export interface HolidayDetail extends HolidaySummary {
   expenses: HolidayExpense[];
   milestones: HolidayMilestone[];
 }
+
+/** The simple income & expenses CSV (Personal) / sales & expenses CSV (Business): what a check or import found. */
+export interface IncomeExpensesImportResult {
+  flavour: "PERSONAL" | "BUSINESS";
+  title: string;
+  /** What one row is called: "transaction" or "sale or expense". */
+  noun: string;
+  columns: string[];
+  /** Every problem row, duplicate and row with a warning, plus the first few clean rows. */
+  rows: Array<{ rowNumber: number; status: "ready" | "duplicate" | "error"; cells: string[]; messages: Array<{ level: "error" | "warning" | "info"; text: string }> }>;
+  hiddenReadyRows: number;
+  totals: { found: number; ready: number; duplicates: number; errors: number; warnings: number };
+  ignoredColumns: string[];
+  willImport: number;
+  imported: number | null;
+}

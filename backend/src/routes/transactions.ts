@@ -4,7 +4,7 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { transactionSchema } from "../lib/validation";
 import { getFinancialYearId } from "../lib/financialYear";
-import { LIKELY_DEDUCTIBLE_EXPENSE_CATEGORIES } from "../lib/constants";
+import { LIKELY_DEDUCTIBLE_EXPENSE_CATEGORIES, POTENTIAL_TAX_SUGGESTION } from "../lib/constants";
 import { syncExpenseReminder } from "../lib/expenseReminders";
 
 const router = Router();
@@ -58,7 +58,7 @@ router.post(
     if (!suggestedTaxCategory && data.direction === "EXPENSE" && data.categoryId) {
       const category = await prisma.category.findUnique({ where: { id: data.categoryId } });
       if (category && LIKELY_DEDUCTIBLE_EXPENSE_CATEGORIES.has(category.name)) {
-        suggestedTaxCategory = "Potential tax-related expense — review with your accountant";
+        suggestedTaxCategory = POTENTIAL_TAX_SUGGESTION;
       }
     }
 

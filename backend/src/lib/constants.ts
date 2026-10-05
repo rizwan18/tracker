@@ -182,3 +182,6 @@ export const GLOSSARY: Record<string, string> = {
   "Body Corporate": "The group of owners in a unit block or complex, and the fees paid to manage shared areas.",
   "Land Tax": "An annual state government tax on the value of land you own (varies by state and typically excludes your home).",
 };
+
+/** The suggestion stored on an expense in a likely-deductible category (a prompt to check with an accountant, never a determination). */
+export const POTENTIAL_TAX_SUGGESTION = "Potential tax-related expense — review with your accountant";
