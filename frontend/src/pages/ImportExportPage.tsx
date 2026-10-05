@@ -4,6 +4,7 @@ import { usePortfolio } from "../context/PortfolioContext";
 import { PortfolioTypeBadge } from "../components/PortfolioTypeBadge";
 import { PortfolioDataPanel, type PortfolioScope } from "../components/PortfolioDataPanel";
 import { BackupRestoreCard } from "../components/BackupRestoreCard";
+import { IncomeExpensesTransfer } from "../components/IncomeExpensesTransfer";
 import { Card, SectionHeading } from "../components/ui";
 
 const PORTFOLIO_SECTIONS: PortfolioScope[] = ["properties", "investments"];
@@ -24,7 +25,8 @@ function Highlight({ id, active, children }: { id: string; active: boolean; chil
  * that is open — the server scopes every export and import to the signed-in portfolio — so the page
  * names that portfolio at the top.
  *
- *   1. Portfolio data  — properties and investments as CSV (same file format as the backup)
+ *   0. Income & expenses (Personal) / Sales & expenses (Company) — one simple spreadsheet: readable columns, no IDs, template, preview
+ *   1. Properties & investments — as CSV (same file format as the backup)
  *   2. Backup & restore — everything in this portfolio as one CSV, and bring it back
  *   3. Company Finance only — where the accounting records can be downloaded (report CSVs)
  *
@@ -58,14 +60,17 @@ export default function ImportExportPage() {
         )}
       </div>
 
+      <IncomeExpensesTransfer business={isCompany} />
+
       <div className="space-y-6">
-        <h2 className="font-display text-lg font-semibold">Portfolio data</h2>
+        <h2 className="font-display text-lg font-semibold">Properties &amp; investments</h2>
         <PortfolioDataPanel scope="properties" highlighted={section === "properties"} />
         <PortfolioDataPanel scope="investments" highlighted={section === "investments"} />
       </div>
 
       <div className="space-y-4">
         <h2 className="font-display text-lg font-semibold">Backup &amp; restore</h2>
+        <p className="text-sm text-[var(--color-ink-soft)] -mt-2">A complete copy of everything in this portfolio, to restore later. It's built for restoring, not for editing in a spreadsheet — use the files above for that.</p>
         <Highlight id="backup-restore" active={section === "backup"}>
           <BackupRestoreCard />
         </Highlight>
@@ -76,7 +81,7 @@ export default function ImportExportPage() {
           <h2 className="font-display text-lg font-semibold">Accounting records</h2>
           <Card>
             <p className="text-sm text-[var(--color-ink-soft)]">
-              Your company's accounting records — sales, expenses, journal entries and the chart of accounts — aren't part of the backup above yet, and can't be imported from a file. To keep a copy, use{" "}
+              Your sales and expenses are in the <span className="font-medium text-[var(--color-ink)]">Sales &amp; expenses</span> file at the top of this page. Journal entries, the chart of accounts and sourcing orders aren't in any file yet — to keep a copy of those, use{" "}
               <span className="font-medium text-[var(--color-ink)]">Download CSV</span> on each report (income statement, balance sheet, trial balance, GST/BAS, general ledger and more).
             </p>
             <div className="mt-3">

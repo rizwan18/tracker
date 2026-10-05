@@ -5,6 +5,7 @@ import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { buildExportCsv } from "../services/dataTransfer/exportData";
 import { runImport } from "../services/dataTransfer/importData";
 import { EXPORT_SCOPES, isExportScope } from "../services/dataTransfer/sections";
+import { exportIncomeExpenses, importIncomeExpenses, templateIncomeExpenses } from "../services/dataTransfer/humanCsv";
 
 const router = Router();
 router.use(requireAuth);
@@ -28,6 +29,48 @@ router.get(
     res.setHeader("Cache-Control", "no-store");
     // The leading BOM makes Excel read the file as UTF-8.
     res.send("\uFEFF" + csv);
+  })
+);
+
+// The simple income & expenses CSV. Personal portfolios get income and expenses; company portfolios get sales and
+// expenses (with GST). Readable column names, no IDs — the same file works as the export, the template and the import.
+function sendCsv(res: import("express").Response, csv: string, fileName: string) {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send("\uFEFF" + csv); // the BOM makes Excel read it as UTF-8
+}
+
+router.get(
+  "/income-expenses/export",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { csv, fileName } = await exportIncomeExpenses(householdOf(req));
+    sendCsv(res, csv, fileName);
+  })
+);
+
+router.get(
+  "/income-expenses/template",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { csv, fileName } = await templateIncomeExpenses(householdOf(req));
+    sendCsv(res, csv, fileName);
+  })
+);
+
+const incomeExpensesImportSchema = z.object({
+  csv: z.string().min(1, "Please choose a file."),
+  /** true = only check the file and report what would happen; false = import. */
+  dryRun: z.boolean().default(true),
+  /** Also add rows that match something you already have. */
+  importDuplicates: z.boolean().default(false),
+});
+
+router.post(
+  "/income-expenses/import",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const householdId = householdOf(req);
+    const { csv, dryRun, importDuplicates } = incomeExpensesImportSchema.parse(req.body);
+    res.json(await importIncomeExpenses(csv, householdId, req.userId!, { dryRun, importDuplicates }));
   })
 );
 
