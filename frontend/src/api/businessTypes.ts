@@ -30,6 +30,9 @@ export interface BusinessEntry {
   dueDate: string | null;
   description: string;
   contactName: string | null;
+  /** The customer/supplier picked from Contacts, when there is one. */
+  contactId: string | null;
+  contact: ContactRef | null;
   reference: string | null;
   account: { id: string; code: string; name: string };
   totalCents: number;
@@ -197,6 +200,8 @@ export interface SourcingSummary {
   orderDate: string | null;
   expectedDate: string | null;
   deliveredDate: string | null;
+  supplierId: string | null;
+  supplier: ContactRef | null;
   supplierName: string;
   supplierCountry: string | null;
   goodsCostCents: number;
@@ -226,6 +231,9 @@ export interface SourcingPayment {
   bankAccount: { id: string; code: string; name: string } | null;
   reference: string | null;
   notes: string | null;
+  /** Who was paid, when it isn't simply the order's supplier. */
+  contactId: string | null;
+  contact: ContactRef | null;
   /** Supplier invoices/receipts attached to this payment (optional). */
   documents: SourcingDocument[];
 }
@@ -234,6 +242,8 @@ export interface SourcingInspection {
   id: string;
   date: string;
   inspector: string | null;
+  inspectorId: string | null;
+  inspectorContact: ContactRef | null;
   result: SourcingInspectionResult;
   costCents: number;
   notes: string | null;
@@ -243,6 +253,14 @@ export interface SourcingShipment {
   id: string;
   method: SourcingShipmentMethod | null;
   carrier: string | null;
+  forwarderId: string | null;
+  forwarder: ContactRef | null;
+  customsAgentId: string | null;
+  customsAgent: ContactRef | null;
+  logisticsId: string | null;
+  logistics: ContactRef | null;
+  warehouseId: string | null;
+  warehouse: ContactRef | null;
   trackingNumber: string | null;
   shippedDate: string | null;
   eta: string | null;
@@ -326,4 +344,106 @@ export interface ProductOption {
   id: string;
   name: string;
   sku: string | null;
+}
+
+
+// --------------------------------------------------------------------------- Contacts
+export type ContactType = "SUPPLIER_MANUFACTURER" | "FREIGHT_FORWARDER" | "INSPECTION" | "CUSTOMS_AGENT" | "LOGISTICS" | "WAREHOUSE_3PL" | "CUSTOMER" | "OTHER";
+
+/** Just enough of a contact to show its name beside an order, payment, shipment or sale/expense. */
+export interface ContactRef {
+  id: string;
+  name: string;
+  types: ContactType[];
+  country: string | null;
+  isArchived: boolean;
+}
+
+/** The details of a contact's business (everything the form edits). */
+export interface ContactFields {
+  name: string;
+  types: ContactType[];
+  country: string | null;
+  state: string | null;
+  city: string | null;
+  address: string | null;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  whatsapp: string | null;
+  wechat: string | null;
+  otherContact: string | null;
+  abn: string | null;
+  registrationNumber: string | null;
+  taxNumber: string | null;
+  paymentTerms: string | null;
+  currency: string | null;
+  notes: string | null;
+}
+
+export interface ContactPerson {
+  id: string;
+  name: string;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  whatsapp: string | null;
+  wechat: string | null;
+  notes: string | null;
+  isPrimary: boolean;
+}
+
+export interface Contact extends ContactFields {
+  id: string;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactSummary extends Contact {
+  personCount: number;
+  primaryPerson: { name: string; role: string | null } | null;
+  /** How many orders, payments, shipments, inspections and sales/expenses use this contact. */
+  linkCount: number;
+}
+
+export interface ContactActivity {
+  orders: Array<{ id: string; reference: string | null; itemDescription: string; status: SourcingStatus; orderDate: string | null; quantity: number; unitCostCents: number; currency: string; product: { id: string; name: string; sku: string | null } | null }>;
+  payments: Array<{ id: string; date: string; amountCents: number; feeCents: number; type: SourcingPaymentType; currency: string; order: { id: string; reference: string | null; itemDescription: string } }>;
+  shipments: Array<{ id: string; method: SourcingShipmentMethod | null; carrier: string | null; trackingNumber: string | null; shippedDate: string | null; eta: string | null; arrivedDate: string | null; roles: Array<"SUPPLIER" | "FORWARDER" | "CUSTOMS_AGENT" | "LOGISTICS" | "WAREHOUSE">; order: { id: string; reference: string | null; itemDescription: string } }>;
+  inspections: Array<{ id: string; date: string; result: SourcingInspectionResult; costCents: number; currency: string; order: { id: string; reference: string | null; itemDescription: string } }>;
+  entries: Array<{ id: string; kind: "INCOME" | "EXPENSE"; date: string; description: string; totalCents: number; status: "PAID" | "UNPAID" }>;
+}
+
+export interface ContactDetail extends Contact {
+  people: ContactPerson[];
+  activity: ContactActivity;
+}
+
+/** One entry in a "pick a contact" box. */
+export interface ContactOption {
+  id: string;
+  name: string;
+  types: ContactType[];
+  country: string | null;
+  email: string | null;
+  phone: string | null;
+  isArchived: boolean;
+  personName: string | null;
+}
+
+export interface DuplicateMatch {
+  id: string;
+  name: string;
+  match: "same" | "similar";
+  isArchived: boolean;
+}
+
+export interface ContactImportResult {
+  committed: boolean;
+  summary: { create: number; update: number; skip: number; error: number };
+  rows: Array<{ name: string; action: "create" | "update" | "skip" | "error"; rows: number[]; types: string[]; people: string[]; messages: string[] }>;
+  ignoredColumns: string[];
 }

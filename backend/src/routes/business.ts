@@ -7,6 +7,7 @@ import { businessEntrySchema, businessPaySchema, businessProfileSchema, ledgerAc
 import { getFinancialYearId } from "../lib/financialYear";
 import { formatAbn } from "../lib/abn";
 import { entryData } from "../services/business/entryData";
+import { contactRefDto, contactRefSelect, resolveContact } from "../services/business/contacts";
 import { resolveBasPeriod } from "../services/business/basPeriods";
 import { isFixedAsset } from "../services/business/chart";
 import { PostingError, assertBalanced } from "../services/business/posting";
@@ -138,13 +139,13 @@ router.delete(
 );
 
 // --------------------------------------------------------------------------- sales & expenses
-const entryInclude = { account: { select: { id: true, code: true, name: true } }, bankAccount: { select: { id: true, code: true, name: true } } } as const;
+const entryInclude = { account: { select: { id: true, code: true, name: true } }, bankAccount: { select: { id: true, code: true, name: true } }, contact: { select: contactRefSelect } } as const;
 
 type EntryWithAccounts = Prisma.BusinessEntryGetPayload<{ include: typeof entryInclude }>;
 
 function entryDto(e: EntryWithAccounts) {
   return {
-    id: e.id, kind: e.kind, date: iso(e.date), dueDate: iso(e.dueDate), description: e.description, contactName: e.contactName, reference: e.reference,
+    id: e.id, kind: e.kind, date: iso(e.date), dueDate: iso(e.dueDate), description: e.description, contactName: e.contactName, contactId: e.contactId, contact: contactRefDto(e.contact), reference: e.reference,
     account: e.account, totalCents: e.totalCents, gstCents: e.gstCents, netCents: e.totalCents - e.gstCents, gstMode: e.gstMode, status: e.status,
     paidDate: iso(e.paidDate), bankAccount: e.bankAccount, notes: e.notes,
   };
@@ -199,6 +200,17 @@ async function checkEntryAccounts(householdId: string, data: { kind: string; acc
   }
 }
 
+/**
+ * The customer/supplier link for a sale or expense. A picked contact's name is what is kept as the entry's text name too
+ * (reports and CSV use it), so renaming the contact keeps everything in step. Left out on an edit = the link is unchanged.
+ */
+async function entryContact(householdId: string, data: ReturnType<typeof businessEntrySchema.parse>, currentId?: string | null) {
+  if (data.contactId === undefined) return {};
+  if (data.contactId === null) return { contactId: null };
+  const contact = await resolveContact(prisma, householdId, data.contactId, { allowArchivedId: currentId });
+  return { contactId: contact!.id, contactName: contact!.name };
+}
+
 router.post(
   "/entries",
   asyncHandler(async (req: AuthedRequest, res) => {
@@ -206,9 +218,10 @@ router.post(
     const profile = await ensureBusinessSetup(householdId);
     const data = businessEntrySchema.parse(req.body);
     await checkEntryAccounts(householdId, data);
+    const contactFields = await entryContact(householdId, data);
     const created = await prisma.$transaction(
       async (tx) => {
-        const entry = await tx.businessEntry.create({ data: { householdId, createdById: req.userId!, ...entryData(data, profile.gstRegistered) }, include: entryInclude });
+        const entry = await tx.businessEntry.create({ data: { householdId, createdById: req.userId!, ...entryData(data, profile.gstRegistered), ...contactFields }, include: entryInclude });
         await repostEntry(tx, entry, req.userId!);
         return entry;
       },
@@ -232,9 +245,10 @@ router.put(
     const profile = await ensureBusinessSetup(householdId);
     const data = businessEntrySchema.parse(req.body);
     await checkEntryAccounts(householdId, data);
+    const contactFields = await entryContact(householdId, data, existing.contactId);
     const updated = await prisma.$transaction(
       async (tx) => {
-        const entry = await tx.businessEntry.update({ where: { id: existing.id }, data: entryData(data, profile.gstRegistered), include: entryInclude });
+        const entry = await tx.businessEntry.update({ where: { id: existing.id }, data: { ...entryData(data, profile.gstRegistered), ...contactFields }, include: entryInclude });
         await repostEntry(tx, entry, req.userId!);
         return entry;
       },

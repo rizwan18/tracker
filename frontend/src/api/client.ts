@@ -40,9 +40,12 @@ export function setToken(token: string | null) {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** The server's full error reply, when it carries more than a message (e.g. the matching contacts in a duplicate warning). */
+  data: Record<string, unknown>;
+  constructor(message: string, status: number, data: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -67,7 +70,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiError(data.error || "Something went wrong. Please try again.", res.status);
+    throw new ApiError(data.error || "Something went wrong. Please try again.", res.status, data);
   }
   return data as T;
 }

@@ -19,6 +19,7 @@ import portfolioRoutes from "./routes/portfolios";
 import businessRoutes from "./routes/business";
 import sourcingRoutes from "./routes/sourcing";
 import sourcingProductRoutes from "./routes/sourcingProducts";
+import contactRoutes from "./routes/contacts";
 import marketDataRoutes from "./routes/marketData";
 import holidayRoutes from "./routes/holidays";
 import { errorHandler } from "./middleware/errorHandler";
@@ -56,6 +57,7 @@ export function createApp() {
   app.use("/api/business", businessRoutes);
   app.use("/api/business/sourcing", sourcingRoutes);
   app.use("/api/business/products", sourcingProductRoutes);
+  app.use("/api/business/contacts", contactRoutes);
   app.use("/api/market-data", marketDataRoutes);
   app.use("/api/holidays", holidayRoutes);
 

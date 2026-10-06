@@ -6,7 +6,7 @@ import { ACCOUNT_GROUPS, ACCOUNT_TYPES_LEDGER, GROUPS_BY_TYPE } from "../service
 import {
   BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES, PORTFOLIO_TYPES,
   SOURCING_ORIGINS, SOURCING_STATUSES, SOURCING_PAYMENT_TYPES, SOURCING_PAYMENT_METHODS, SOURCING_INSPECTION_RESULTS, SOURCING_SHIPMENT_METHODS,
-  HOLIDAY_STATUSES, HOLIDAY_EXPENSE_CATEGORIES, HOLIDAY_MILESTONE_TYPES,
+  HOLIDAY_STATUSES, HOLIDAY_EXPENSE_CATEGORIES, HOLIDAY_MILESTONE_TYPES, CONTACT_TYPES,
 } from "./constants";
 
 export const registerSchema = z.object({
@@ -216,6 +216,8 @@ export const businessEntrySchema = z
     dueDate: z.coerce.date().nullable().optional(),
     description: z.string().trim().min(1, "Please describe it.").max(300),
     contactName: z.string().trim().max(150).nullable().optional(),
+    /** The customer/supplier picked from Contacts. Left out = unchanged on edit; null = unlinked. */
+    contactId: z.string().trim().min(1).max(60).nullable().optional(),
     reference: z.string().trim().max(60).nullable().optional(),
     accountId: z.string().min(1, "Please choose a category."),
     /** The amount as typed, in cents; GST is added or extracted according to gstMode. */
@@ -302,7 +304,9 @@ export const sourcingRecordSchema = z
     orderDate: z.coerce.date().optional().nullable(),
     expectedDate: z.coerce.date().optional().nullable(),
     deliveredDate: z.coerce.date().optional().nullable(),
-    supplierName: z.string().trim().min(1, "Please name the supplier or manufacturer.").max(150),
+    // The supplier picked from Contacts. When given, the server fills the supplier details below from that contact.
+    supplierId: z.string().trim().min(1).max(60).optional().nullable(),
+    supplierName: z.string().trim().max(150).optional().default(""),
     supplierCountry: optionalSourcingText(80),
     supplierContactName: optionalSourcingText(120),
     supplierEmail: z
@@ -325,7 +329,9 @@ export const sourcingRecordSchema = z
     supplierAddress: optionalSourcingText(300),
     notes: optionalSourcingText(2000),
   })
-  .refine((v) => v.origin === "LOCAL" || !!v.supplierCountry, { message: "Please enter the supplier's country for an overseas order.", path: ["supplierCountry"] });
+  .refine((v) => !!v.supplierId || v.supplierName.length > 0, { message: "Please choose or name the supplier or manufacturer.", path: ["supplierName"] })
+  // With a Contact picked the country comes from the contact (checked when the order is saved).
+  .refine((v) => !!v.supplierId || v.origin === "LOCAL" || !!v.supplierCountry, { message: "Please enter the supplier's country for an overseas order.", path: ["supplierCountry"] });
 
 export const sourcingPaymentSchema = z.object({
   date: z.coerce.date(),
@@ -336,11 +342,15 @@ export const sourcingPaymentSchema = z.object({
   bankAccountId: z.string().optional().nullable(),
   reference: optionalSourcingText(80),
   notes: optionalSourcingText(1000),
+  /** Who was paid, when it isn't the order's own supplier. Left out = unchanged on edit; null = cleared. */
+  contactId: z.string().trim().min(1).max(60).optional().nullable(),
 });
 
 export const sourcingInspectionSchema = z.object({
   date: z.coerce.date(),
   inspector: optionalSourcingText(150),
+  /** The inspection company picked from Contacts (fills `inspector` with its name). */
+  inspectorId: z.string().trim().min(1).max(60).optional().nullable(),
   result: z.enum(SOURCING_INSPECTION_RESULTS).default("PENDING"),
   costCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS).default(0),
   notes: optionalSourcingText(2000),
@@ -349,6 +359,11 @@ export const sourcingInspectionSchema = z.object({
 export const sourcingShipmentSchema = z.object({
   method: z.enum(SOURCING_SHIPMENT_METHODS).optional().nullable(),
   carrier: optionalSourcingText(120),
+  /** Contacts picked for this shipment. Left out = unchanged on edit; null = cleared. */
+  forwarderId: z.string().trim().min(1).max(60).optional().nullable(),
+  customsAgentId: z.string().trim().min(1).max(60).optional().nullable(),
+  logisticsId: z.string().trim().min(1).max(60).optional().nullable(),
+  warehouseId: z.string().trim().min(1).max(60).optional().nullable(),
   trackingNumber: optionalSourcingText(80),
   shippedDate: z.coerce.date().optional().nullable(),
   eta: z.coerce.date().optional().nullable(),
@@ -358,6 +373,88 @@ export const sourcingShipmentSchema = z.object({
   insuranceCostCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS).default(0),
   otherCostCents: z.number().int("Amounts are in whole cents.").min(0).max(MAX_ENTRY_CENTS).default(0),
   notes: optionalSourcingText(2000),
+});
+
+// ---------------------------------------------------------------------------
+// Contacts (Company Finance)
+// ---------------------------------------------------------------------------
+const contactEmail = z
+  .string()
+  .trim()
+  .max(200)
+  .optional()
+  .nullable()
+  .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: "That email address doesn't look right." })
+  .transform((v) => (v ? v : null));
+
+const contactWebsite = z
+  .string()
+  .trim()
+  .max(200)
+  .optional()
+  .nullable()
+  .refine((v) => !v || normaliseWebsite(v) !== null, { message: "That doesn't look like a website address, e.g. www.supplier.com." })
+  .transform((v) => (v ? normaliseWebsite(v) : null));
+
+/** A phone / WhatsApp / WeChat style value: free text, but only characters that make sense in one. */
+const contactHandle = (max: number) => optionalSourcingText(max);
+
+export const contactTypesSchema = z
+  .array(z.enum(CONTACT_TYPES), { required_error: "Please choose at least one contact type.", invalid_type_error: "Please choose at least one contact type." })
+  .min(1, "Please choose at least one contact type.")
+  .transform((t) => CONTACT_TYPES.filter((x) => t.includes(x))); // de-duplicated, in a fixed order
+
+/** One person at a contact's business. */
+export const contactPersonSchema = z.object({
+  name: z.string({ required_error: "Please enter the person's name." }).trim().min(1, "Please enter the person's name.").max(120),
+  role: optionalSourcingText(120),
+  email: contactEmail,
+  phone: contactHandle(40),
+  mobile: contactHandle(40),
+  whatsapp: contactHandle(60),
+  wechat: contactHandle(60),
+  notes: optionalSourcingText(1000),
+  isPrimary: z.boolean().optional(),
+});
+
+export const contactSchema = z.object({
+  name: z.string({ required_error: "Please enter the business name." }).trim().min(1, "Please enter the business name.").max(150),
+  types: contactTypesSchema,
+  country: optionalSourcingText(80),
+  state: optionalSourcingText(80),
+  city: optionalSourcingText(80),
+  address: optionalSourcingText(300),
+  website: contactWebsite,
+  email: contactEmail,
+  phone: contactHandle(40),
+  mobile: contactHandle(40),
+  whatsapp: contactHandle(60),
+  wechat: contactHandle(60),
+  otherContact: optionalSourcingText(200),
+  abn: z
+    .string()
+    .trim()
+    .max(20)
+    .optional()
+    .nullable()
+    .refine((v) => !v || isValidAbn(v), { message: "That ABN doesn't look right — an ABN has 11 digits." })
+    .transform((v) => (v ? normaliseAbn(v) : null)),
+  registrationNumber: optionalSourcingText(60),
+  taxNumber: optionalSourcingText(60),
+  paymentTerms: optionalSourcingText(120),
+  currency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .optional()
+    .nullable()
+    .refine((v) => !v || /^[A-Z]{3}$/.test(v), { message: "Use a 3-letter currency code, e.g. AUD, USD, CNY." })
+    .transform((v) => (v ? v : null)),
+  notes: optionalSourcingText(2000),
+  /** Optional: the main person to start the contact with (create only; more people are added on the contact's page). */
+  person: z.object({ name: z.string().trim().max(120), role: optionalSourcingText(120) }).optional().nullable(),
+  /** Set to true after the person has seen the "this looks like a contact you already have" warning and wants a new one anyway. */
+  allowDuplicate: z.boolean().optional(),
 });
 
 /** Property manager / managing agent details. Empty strings are treated as "not set". */

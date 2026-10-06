@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError } from "../../api/client";
 import type {
-  LedgerAccount, ProductOption, SourcingDetail, SourcingInspection, SourcingInspectionResult, SourcingOrigin, SourcingPayment, SourcingPaymentMethod, SourcingPaymentType,
+  ContactRef, LedgerAccount, ProductOption, SourcingDetail, SourcingInspection, SourcingInspectionResult, SourcingOrigin, SourcingPayment, SourcingPaymentMethod, SourcingPaymentType,
   SourcingShipment, SourcingShipmentMethod, SourcingStatus,
 } from "../../api/businessTypes";
 import { Button, Field, inputClass } from "../ui";
+import { ContactPicker } from "./ContactPicker";
+import { PICK_FOR } from "../../lib/contacts";
 import { centsToInput, toCents } from "../../lib/money";
 import { toInputDate } from "../../lib/format";
 import {
@@ -90,13 +92,9 @@ export function SourcingRecordForm({ initial, product, onSaved, onCancel }: { in
   const [orderDate, setOrderDate] = useState(toInputDate(initial?.orderDate));
   const [expectedDate, setExpectedDate] = useState(toInputDate(initial?.expectedDate));
   const [deliveredDate, setDeliveredDate] = useState(toInputDate(initial?.deliveredDate));
-  const [supplierName, setSupplierName] = useState(initial?.supplierName ?? "");
-  const [supplierCountry, setSupplierCountry] = useState(initial?.supplierCountry ?? "");
+  // The supplier is a contact from Contacts (its details live there, once). Only who to speak to *for this order* is kept here.
+  const [supplier, setSupplier] = useState<ContactRef | null>(initial?.supplier ?? null);
   const [supplierContactName, setSupplierContactName] = useState(initial?.supplierContactName ?? "");
-  const [supplierEmail, setSupplierEmail] = useState(initial?.supplierEmail ?? "");
-  const [supplierPhone, setSupplierPhone] = useState(initial?.supplierPhone ?? "");
-  const [supplierWebsite, setSupplierWebsite] = useState(initial?.supplierWebsite ?? "");
-  const [supplierAddress, setSupplierAddress] = useState(initial?.supplierAddress ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const { saving, error, setError, run } = useSubmit();
 
@@ -114,15 +112,16 @@ export function SourcingRecordForm({ initial, product, onSaved, onCancel }: { in
     const marginPercent = margin.trim() === "" ? 40 : Number(margin);
     if (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent >= 100) return setError("Please enter the target gross margin as a percentage from 0 to under 100, like 40.");
 
+    if (!supplier) return setError("Please choose the supplier or manufacturer — or add them as a new contact.");
+    if (origin === "OVERSEAS" && !supplier.country) return setError(`“${supplier.name}” has no country yet. Open the contact, add their country, then save this order.`);
+
     await run(async () => {
       const body = {
         productId: productId || undefined,
         targetMarginPercent: marginPercent,
         origin, status, reference: blankToNull(reference), itemDescription: itemDescription.trim(), quantity: qty, unitCostCents, currency: code, exchangeRateToAud: fx,
         orderDate: blankToNull(orderDate), expectedDate: blankToNull(expectedDate), deliveredDate: blankToNull(deliveredDate),
-        supplierName: supplierName.trim(), supplierCountry: blankToNull(supplierCountry), supplierContactName: blankToNull(supplierContactName),
-        supplierEmail: blankToNull(supplierEmail), supplierPhone: blankToNull(supplierPhone), supplierWebsite: blankToNull(supplierWebsite),
-        supplierAddress: blankToNull(supplierAddress), notes: blankToNull(notes),
+        supplierId: supplier.id, supplierContactName: blankToNull(supplierContactName), notes: blankToNull(notes),
       };
       const saved = initial ? await api.put<SourcingDetail>(`${BASE}/${initial.id}`, body) : await api.post<SourcingDetail>(BASE, body);
       onSaved(saved);
@@ -149,17 +148,11 @@ export function SourcingRecordForm({ initial, product, onSaved, onCancel }: { in
       </div>
 
       <p className="text-sm font-semibold text-[var(--color-ink)] pt-2">Supplier / manufacturer</p>
-      <Field label="Name" htmlFor="so-supplier"><input id="so-supplier" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} className={inputClass} required maxLength={150} /></Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={origin === "OVERSEAS" ? "Country" : "State / country (optional)"} htmlFor="so-country">
-          <input id="so-country" value={supplierCountry} onChange={(e) => setSupplierCountry(e.target.value)} className={inputClass} required={origin === "OVERSEAS"} maxLength={80} />
-        </Field>
-        <Field label="Contact person (optional)" htmlFor="so-contact"><input id="so-contact" value={supplierContactName} onChange={(e) => setSupplierContactName(e.target.value)} className={inputClass} maxLength={120} /></Field>
-        <Field label="Email (optional)" htmlFor="so-email"><input id="so-email" type="email" value={supplierEmail} onChange={(e) => setSupplierEmail(e.target.value)} className={inputClass} /></Field>
-        <Field label="Phone (optional)" htmlFor="so-phone"><input id="so-phone" value={supplierPhone} onChange={(e) => setSupplierPhone(e.target.value)} className={inputClass} maxLength={40} /></Field>
-      </div>
-      <Field label="Website (optional)" htmlFor="so-web"><input id="so-web" value={supplierWebsite} onChange={(e) => setSupplierWebsite(e.target.value)} className={inputClass} placeholder="www.supplier.com" /></Field>
-      <Field label="Address (optional)" htmlFor="so-address"><input id="so-address" value={supplierAddress} onChange={(e) => setSupplierAddress(e.target.value)} className={inputClass} maxLength={300} /></Field>
+      <Field label="Supplier" htmlFor="so-supplier" hint="Chosen from your Contacts, so their details are kept in one place. Not there yet? Add them without leaving this form.">
+        <ContactPicker id="so-supplier" selected={supplier} onSelect={setSupplier} prefer={PICK_FOR.supplier} placeholder="Search suppliers…" addLabel="+ Add new supplier" />
+      </Field>
+      {supplier && <p className="text-xs text-[var(--color-ink-soft)] -mt-2">{supplier.country ? `Based in ${supplier.country}. ` : ""}Their email, phone, address and other details come from the contact.</p>}
+      <Field label="Person to speak to for this order (optional)" htmlFor="so-contact"><input id="so-contact" value={supplierContactName} onChange={(e) => setSupplierContactName(e.target.value)} className={inputClass} maxLength={120} /></Field>
 
       <p className="text-sm font-semibold text-[var(--color-ink)] pt-2">What you're buying</p>
       <Field label="Item description" htmlFor="so-item" hint="What this order is for, as it appears on the order or invoice."><input id="so-item" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} className={inputClass} required maxLength={300} /></Field>
@@ -203,6 +196,7 @@ export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, in
   const [bankAccountId, setBankAccountId] = useState(initial?.bankAccount?.id ?? "");
   const [reference, setReference] = useState(initial?.reference ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [payee, setPayee] = useState<ContactRef | null>(initial?.contact ?? null);
   const { saving, error, setError, run } = useSubmit();
   // Keep the saved account selectable even if it has since been deactivated.
   const paidFromOptions = banks.map((b): [string, string] => [b.id, `${b.code} · ${b.name}`]);
@@ -216,7 +210,7 @@ export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, in
     const feeCents = fee.trim() === "" ? 0 : toCents(fee);
     if (feeCents === null) return setError("Please enter the transaction fee as an amount, like 25.00.");
     await run(async () => {
-      const body = { date, amountCents, feeCents, type, method: method || null, bankAccountId: bankAccountId || null, reference: blankToNull(reference), notes: blankToNull(notes) };
+      const body = { date, amountCents, feeCents, type, method: method || null, bankAccountId: bankAccountId || null, reference: blankToNull(reference), notes: blankToNull(notes), contactId: payee?.id ?? null };
       onSaved(initial ? await api.put<SourcingDetail>(`${BASE}/${recordId}/payments/${initial.id}`, body) : await api.post<SourcingDetail>(`${BASE}/${recordId}/payments`, body));
     });
   }
@@ -236,6 +230,9 @@ export function SourcingPaymentForm({ recordId, currency, banks, defaultDate, in
       >
         <input id="sp-fee" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} className={inputClass} placeholder="0.00" />
       </Field>
+      <Field label="Paid to (optional)" htmlFor="sp-payee" hint="Leave blank for a payment to this order's supplier. Choose someone else — a freight forwarder, say — if they're who you paid.">
+        <ContactPicker id="sp-payee" selected={payee} onSelect={setPayee} placeholder="The order's supplier" />
+      </Field>
       <Field label="Paid from (optional)" htmlFor="sp-bank">{select("sp-bank", bankAccountId, setBankAccountId, [["", "Not specified"], ...paidFromOptions])}</Field>
       <Field label="Bank reference (optional)" htmlFor="sp-ref"><input id="sp-ref" value={reference} onChange={(e) => setReference(e.target.value)} className={inputClass} maxLength={80} /></Field>
       <Field label="Notes (optional)" htmlFor="sp-notes"><input id="sp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} maxLength={1000} /></Field>
@@ -248,7 +245,7 @@ export function SourcingInspectionForm({ recordId, currency, defaultDate, initia
   recordId: string; currency: string; defaultDate: string; initial?: SourcingInspection; onSaved: (r: SourcingDetail) => void; onCancel: () => void;
 }) {
   const [date, setDate] = useState(initial ? toInputDate(initial.date) : defaultDate);
-  const [inspector, setInspector] = useState(initial?.inspector ?? "");
+  const [inspector, setInspector] = useState<ContactRef | null>(initial?.inspectorContact ?? null);
   const [result, setResult] = useState<SourcingInspectionResult>(initial?.result ?? "PENDING");
   const [cost, setCost] = useState(initial ? costInput(initial.costCents) : "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
@@ -258,7 +255,7 @@ export function SourcingInspectionForm({ recordId, currency, defaultDate, initia
     const costCents = cost.trim() === "" ? 0 : toCents(cost);
     if (costCents === null) return setError("Please enter the inspection cost as an amount, like 250.00.");
     await run(async () => {
-      const body = { date, inspector: blankToNull(inspector), result, costCents, notes: blankToNull(notes) };
+      const body = { date, inspectorId: inspector?.id ?? null, inspector: inspector ? inspector.name : initial && !initial.inspectorId ? initial.inspector : null, result, costCents, notes: blankToNull(notes) };
       onSaved(initial ? await api.put<SourcingDetail>(`${BASE}/${recordId}/inspections/${initial.id}`, body) : await api.post<SourcingDetail>(`${BASE}/${recordId}/inspections`, body));
     });
   }
@@ -268,9 +265,11 @@ export function SourcingInspectionForm({ recordId, currency, defaultDate, initia
       <div className="grid grid-cols-2 gap-3">
         <Field label="Inspection date" htmlFor="si-date"><input id="si-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} required /></Field>
         <Field label={`Inspection cost (${currency})`} htmlFor="si-cost"><input id="si-cost" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} className={inputClass} placeholder="0.00" /></Field>
-        <Field label="Inspector / agency (optional)" htmlFor="si-inspector"><input id="si-inspector" value={inspector} onChange={(e) => setInspector(e.target.value)} className={inputClass} maxLength={150} /></Field>
         <Field label="Result" htmlFor="si-result">{select("si-result", result, (v) => setResult(v as SourcingInspectionResult), Object.entries(INSPECTION_RESULT_LABELS))}</Field>
       </div>
+      <Field label="Inspection company (optional)" htmlFor="si-inspector" hint={initial && !initial.inspectorId && initial.inspector ? `Entered earlier as “${initial.inspector}” — pick them from Contacts to link it.` : undefined}>
+        <ContactPicker id="si-inspector" selected={inspector} onSelect={setInspector} prefer={PICK_FOR.inspection} placeholder="Search inspection companies…" addLabel="+ Add new inspection company" />
+      </Field>
       <Field label="Notes (optional)" htmlFor="si-notes"><textarea id="si-notes" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} rows={3} maxLength={2000} /></Field>
     </FormShell>
   );
@@ -282,6 +281,10 @@ export function SourcingShipmentForm({ recordId, currency, initial, onSaved, onC
 }) {
   const [method, setMethod] = useState<SourcingShipmentMethod | "">(initial ? initial.method ?? "" : "SEA");
   const [carrier, setCarrier] = useState(initial?.carrier ?? "");
+  const [forwarder, setForwarder] = useState<ContactRef | null>(initial?.forwarder ?? null);
+  const [customsAgent, setCustomsAgent] = useState<ContactRef | null>(initial?.customsAgent ?? null);
+  const [logistics, setLogistics] = useState<ContactRef | null>(initial?.logistics ?? null);
+  const [warehouse, setWarehouse] = useState<ContactRef | null>(initial?.warehouse ?? null);
   const [trackingNumber, setTrackingNumber] = useState(initial?.trackingNumber ?? "");
   const [shippedDate, setShippedDate] = useState(toInputDate(initial?.shippedDate));
   const [eta, setEta] = useState(toInputDate(initial?.eta));
@@ -300,6 +303,7 @@ export function SourcingShipmentForm({ recordId, currency, initial, onSaved, onC
     await run(async () => {
       const body = {
         method: method || null, carrier: blankToNull(carrier), trackingNumber: blankToNull(trackingNumber),
+        forwarderId: forwarder?.id ?? null, customsAgentId: customsAgent?.id ?? null, logisticsId: logistics?.id ?? null, warehouseId: warehouse?.id ?? null,
         shippedDate: blankToNull(shippedDate), eta: blankToNull(eta), arrivedDate: blankToNull(arrivedDate),
         freightCostCents, customsDutyCents, insuranceCostCents, otherCostCents, notes: blankToNull(notes),
       };
@@ -311,8 +315,13 @@ export function SourcingShipmentForm({ recordId, currency, initial, onSaved, onC
     <FormShell onSubmit={submit} onCancel={onCancel} saving={saving} error={error} submitLabel={initial ? "Save changes" : "Add shipment"}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Shipping method" htmlFor="ss-method">{select("ss-method", method, (v) => setMethod(v as SourcingShipmentMethod | ""), [["", "Not specified"], ...Object.entries(SHIPMENT_METHOD_LABELS)])}</Field>
-        <Field label="Carrier (optional)" htmlFor="ss-carrier"><input id="ss-carrier" value={carrier} onChange={(e) => setCarrier(e.target.value)} className={inputClass} maxLength={120} /></Field>
+        <Field label="Carrier / vessel (optional)" htmlFor="ss-carrier"><input id="ss-carrier" value={carrier} onChange={(e) => setCarrier(e.target.value)} className={inputClass} maxLength={120} placeholder="Left blank = the forwarder's name" /></Field>
       </div>
+      <p className="text-sm font-semibold text-[var(--color-ink)] pt-2">Who's handling it</p>
+      <Field label="Freight forwarder" htmlFor="ss-forwarder"><ContactPicker id="ss-forwarder" selected={forwarder} onSelect={setForwarder} prefer={PICK_FOR.forwarder} placeholder="Search freight forwarders…" addLabel="+ Add new freight forwarder" /></Field>
+      <Field label="Customs / import agent" htmlFor="ss-customs-agent"><ContactPicker id="ss-customs-agent" selected={customsAgent} onSelect={setCustomsAgent} prefer={PICK_FOR.customs} placeholder="Search customs agents…" addLabel="+ Add new customs agent" /></Field>
+      <Field label="Shipping / logistics provider" htmlFor="ss-logistics"><ContactPicker id="ss-logistics" selected={logistics} onSelect={setLogistics} prefer={PICK_FOR.logistics} placeholder="Search logistics providers…" addLabel="+ Add new logistics provider" /></Field>
+      <Field label="Warehouse / 3PL (optional)" htmlFor="ss-warehouse"><ContactPicker id="ss-warehouse" selected={warehouse} onSelect={setWarehouse} prefer={PICK_FOR.warehouse} placeholder="Search warehouses…" addLabel="+ Add new warehouse" /></Field>
       <Field label="Tracking number (optional)" htmlFor="ss-track"><input id="ss-track" value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} className={inputClass} maxLength={80} /></Field>
       <div className="grid grid-cols-3 gap-3">
         <Field label="Shipped" htmlFor="ss-sd"><input id="ss-sd" type="date" value={shippedDate} onChange={(e) => setShippedDate(e.target.value)} className={inputClass} /></Field>

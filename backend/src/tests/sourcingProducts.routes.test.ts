@@ -9,7 +9,7 @@ import type { Server } from "node:http";
 
 const h = vi.hoisted(() => {
   type Row = Record<string, any>;
-  const state = { products: [] as Row[], records: [] as Row[], blobs: new Map<string, Buffer>(), seq: 0, failNextPut: false, deletedBlobs: [] as string[] };
+  const state = { products: [] as Row[], records: [] as Row[], contacts: [] as Row[], blobs: new Map<string, Buffer>(), seq: 0, failNextPut: false, deletedBlobs: [] as string[] };
   const id = (p: string) => `${p}${++state.seq}`;
 
   function matches(obj: Row, where: Row | undefined): boolean {
@@ -74,6 +74,13 @@ const h = vi.hoisted(() => {
       update: async ({ where, data, include }: Row) => { const r = state.records.find((x) => x.id === where.id)!; Object.assign(r, data); return recordView(r, include); },
       updateMany: async ({ where, data }: Row) => { const rows = state.records.filter((r) => matches(r, where)); rows.forEach((r) => Object.assign(r, data)); return { count: rows.length }; },
     },
+    // Contacts: just enough for an order to be linked to its supplier (found by name, or created).
+    contact: {
+      findMany: async ({ where }: Row) => state.contacts.filter((c) => matches(c, where)),
+      findFirst: async ({ where }: Row) => state.contacts.find((c) => matches(c, where)) ?? null,
+      create: async ({ data }: Row) => { const row = { id: id("con"), isArchived: false, country: null, createdAt: new Date(state.seq), ...data }; state.contacts.push(row); return row; },
+    },
+    contactPerson: { findMany: async () => [] },
     $executeRaw: async () => 0,
     $transaction: async (fn: (tx: Row) => unknown) => fn(prisma),
   };
@@ -111,7 +118,7 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/business`;
 });
 afterAll(() => { server.close(); vi.unstubAllGlobals(); });
-beforeEach(() => { Object.assign(h.state, { products: [], records: [], blobs: new Map(), failNextPut: false, deletedBlobs: [] }); });
+beforeEach(() => { Object.assign(h.state, { products: [], records: [], contacts: [], blobs: new Map(), failNextPut: false, deletedBlobs: [] }); });
 
 const call = async (method: string, path: string, body?: unknown, household = "h1") => {
   const res = await realFetch(`${base}${path}`, { method, headers: { "content-type": "application/json", "x-test-household": household }, body: body === undefined ? undefined : JSON.stringify(body) });

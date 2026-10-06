@@ -261,7 +261,7 @@ export default function SourcingDetailPage() {
             <Card>
               <h3 className="font-display font-semibold mb-2">Supplier</h3>
               <dl>
-                <Row label="Name">{r.supplierName}</Row>
+                <Row label="Name">{r.supplier ? <Link className="text-[var(--color-eucalyptus)] hover:underline" to={`/business/contacts/${r.supplier.id}`}>{r.supplierName}</Link> : r.supplierName}</Row>
                 <Row label="Country">{r.supplierCountry}</Row>
                 <Row label="Contact">{r.supplierContactName}</Row>
                 <Row label="Email">{r.supplierEmail && <a className="text-[var(--color-eucalyptus)]" href={`mailto:${r.supplierEmail}`}>{r.supplierEmail}</a>}</Row>
@@ -295,6 +295,7 @@ export default function SourcingDetailPage() {
                       <p className="text-xs text-[var(--color-ink-soft)]">
                         {[p.method && PAYMENT_METHOD_LABELS[p.method], p.bankAccount && `${p.bankAccount.code} ${p.bankAccount.name}`, p.reference && `Ref ${p.reference}`, p.notes].filter(Boolean).join(" · ")}
                       </p>
+                      {p.contact && <p className="text-xs text-[var(--color-ink-soft)]">Paid to <Link className="text-[var(--color-eucalyptus)] hover:underline" to={`/business/contacts/${p.contact.id}`}>{p.contact.name}</Link></p>}
                       <DocumentChips documents={p.documents} onDownload={downloadDocument} onDelete={deleteDocument} />
                     </div>
                     <div className="text-right">
@@ -324,7 +325,7 @@ export default function SourcingDetailPage() {
                   <li key={i.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
                     <div className="flex-1 min-w-[12rem]">
                       <p className="font-medium">{formatDate(i.date)} · {INSPECTION_RESULT_LABELS[i.result]}</p>
-                      <p className="text-xs text-[var(--color-ink-soft)]">{[i.inspector, i.notes].filter(Boolean).join(" · ")}</p>
+                      <p className="text-xs text-[var(--color-ink-soft)]">{i.inspectorContact ? <Link className="text-[var(--color-eucalyptus)] hover:underline" to={`/business/contacts/${i.inspectorContact.id}`}>{i.inspectorContact.name}</Link> : i.inspector}{i.notes ? ` · ${i.notes}` : ""}</p>
                     </div>
                     <span className="font-medium">{money(i.costCents)}</span>
                     <Button variant="ghost" size="sm" onClick={() => openDialog("inspection", i.id)}>Edit</Button>
@@ -355,6 +356,13 @@ export default function SourcingDetailPage() {
                         <p className="text-xs text-[var(--color-ink-soft)]">
                           {[s.trackingNumber && `Tracking ${s.trackingNumber}`, s.shippedDate && `Shipped ${formatDate(s.shippedDate)}`, s.eta && `ETA ${formatDate(s.eta)}`, s.arrivedDate && `Arrived ${formatDate(s.arrivedDate)}`].filter(Boolean).join(" · ")}
                         </p>
+                        {[["Forwarder", s.forwarder], ["Customs", s.customsAgent], ["Logistics", s.logistics], ["Warehouse", s.warehouse]].some(([, c]) => c) && (
+                          <p className="text-xs text-[var(--color-ink-soft)]">
+                            {([["Forwarder", s.forwarder], ["Customs", s.customsAgent], ["Logistics", s.logistics], ["Warehouse", s.warehouse]] as const).filter(([, c]) => c).map(([label, c], i) => (
+                              <span key={label}>{i > 0 && " · "}{label}: <Link className="text-[var(--color-eucalyptus)] hover:underline" to={`/business/contacts/${c!.id}`}>{c!.name}</Link></span>
+                            ))}
+                          </p>
+                        )}
                         {late && <p className="text-xs text-[var(--color-brick)]">Past its ETA and not marked arrived.</p>}
                       </div>
                       <div className="text-right">

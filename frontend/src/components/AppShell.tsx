@@ -25,6 +25,7 @@ const COMPANY_NAV = [
   { to: "/business/sales", label: "Sales", icon: "💰" },
   { to: "/business/expenses", label: "Expenses", icon: "💳" },
   { to: "/business/products", label: "Products/SKU", icon: "📦" },
+  { to: "/business/contacts", label: "Contacts", icon: "📇" },
   { to: "/business/reports", label: "Reports", icon: "📊" },
   { to: "/business/accounts", label: "Accounts", icon: "📒" },
   { to: "/business/journal", label: "Journal", icon: "✍️" },
@@ -39,6 +40,7 @@ const COMPANY_MOBILE_NAV = [
   { to: "/", label: "Home", icon: "🏠", end: true },
   { to: "/business/sales", label: "Sales", icon: "💰" },
   { to: "/business/expenses", label: "Expenses", icon: "💳" },
+  { to: "/business/contacts", label: "Contacts", icon: "📇" },
   { to: "/business/reports", label: "Reports", icon: "📊" },
   { to: "/settings", label: "More", icon: "⚙️" },
 ];
