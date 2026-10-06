@@ -1,7 +1,9 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { api, ApiError } from "../../api/client";
-import type { BusinessEntry, BusinessProfile, LedgerAccount } from "../../api/businessTypes";
+import type { BusinessEntry, BusinessProfile, ContactRef, LedgerAccount } from "../../api/businessTypes";
 import { Button, Field, inputClass } from "../ui";
+import { ContactPicker } from "./ContactPicker";
+import { PICK_FOR } from "../../lib/contacts";
 import { centsToInput, computeGst, formatCents, toCents, type GstMode } from "../../lib/money";
 import { toInputDate } from "../../lib/format";
 
@@ -43,7 +45,9 @@ export function BusinessEntryForm({
 
   const [date, setDate] = useState(initial ? toInputDate(initial.date) : defaultDate);
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [contactName, setContactName] = useState(initial?.contactName ?? "");
+  // The customer/supplier comes from Contacts. A name typed before Contacts existed (or for a one-off) is kept as plain text.
+  const [contact, setContact] = useState<ContactRef | null>(initial?.contact ?? null);
+  const [contactName, setContactName] = useState(initial?.contact ? "" : initial?.contactName ?? "");
   const [reference, setReference] = useState(initial?.reference ?? "");
   const [accountId, setAccountId] = useState(initial?.account.id ?? "");
   const [amount, setAmount] = useState(initial ? centsToInput(initial.gstMode === "EXCLUSIVE" ? initial.netCents : initial.totalCents) : "");
@@ -92,7 +96,8 @@ export function BusinessEntryForm({
         date,
         dueDate: status === "UNPAID" ? dueDate || null : null,
         description: description.trim(),
-        contactName: contactName.trim() || null,
+        contactId: contact?.id ?? null,
+        contactName: contact ? contact.name : contactName.trim() || null,
         reference: reference.trim() || null,
         accountId,
         amountCents: cents,
@@ -135,8 +140,17 @@ export function BusinessEntryForm({
       </Field>
 
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label={isSale ? "Customer" : "Supplier"} htmlFor="be-contact" hint="Optional.">
-          <input id="be-contact" className={inputClass} value={contactName} onChange={(e) => setContactName(e.target.value)} />
+        <Field label={isSale ? "Customer" : "Supplier"} htmlFor="be-contact" hint="Optional. Pick from Contacts, or use a name without saving it.">
+          <ContactPicker
+            id="be-contact"
+            selected={contact}
+            onSelect={(c) => { setContact(c); if (c) setContactName(""); }}
+            prefer={isSale ? PICK_FOR.customer : PICK_FOR.supplier}
+            placeholder={isSale ? "Search customers…" : "Search suppliers…"}
+            addLabel={isSale ? "+ Add new customer" : "+ Add new supplier"}
+            freeTextName={contactName.trim() || null}
+            onFreeText={(n) => { setContact(null); setContactName(n); }}
+          />
         </Field>
         <Field label="Category" htmlFor="be-account">
           <select id="be-account" className={inputClass} value={accountId} onChange={(e) => setAccountId(e.target.value)}>

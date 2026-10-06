@@ -61,6 +61,7 @@ model Household {
   capitalGainDisposals CapitalGainDisposal[]
   sourcingRecords SourcingRecord[]
   sourcingProducts SourcingProduct[]
+  contacts      Contact[]
   holidayPlans  HolidayPlan[]
 }
 
@@ -586,7 +587,9 @@ model BusinessEntry {
   date          DateTime
   dueDate       DateTime?
   description   String
-  contactName   String?   // customer or supplier
+  contactName   String?   // customer or supplier, as typed (kept for history; contactId is the link to the Contacts book)
+  contactId     String?   // the customer/supplier in Contacts, when one was picked
+  contact       Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
   reference     String?   // invoice / bill number
   accountId     String    // income or expense (or fixed-asset) account
   account       LedgerAccount @relation("EntryAccount", fields: [accountId], references: [id])
@@ -604,6 +607,7 @@ model BusinessEntry {
 
   @@index([householdId, date])
   @@index([householdId, kind, status])
+  @@index([contactId])
 }
 
 model JournalEntry {
@@ -701,9 +705,11 @@ model SourcingRecord {
   expectedDate      DateTime? // expected ready/delivery date
   deliveredDate     DateTime?
 
-  // Supplier / manufacturer contact details — kept directly on the record, the
-  // same way property manager details are kept on Property, since there's no
-  // separate contacts/companies table in this app.
+  // Supplier / manufacturer. `supplierId` links to the Contacts book (the one source of truth).
+  // The text fields below are the details as they were when the order was saved — kept so
+  // history is never lost; when supplierId is set the Contact is what the app shows and keeps current.
+  supplierId          String?
+  supplier            Contact? @relation("OrderSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
   supplierName        String
   supplierCountry     String?
   supplierContactName String?
@@ -727,6 +733,7 @@ model SourcingRecord {
   @@index([householdId, origin])
   @@index([householdId, orderDate])
   @@index([productId])
+  @@index([supplierId])
 }
 
 /// A payment made towards a sourcing order — orders are often paid in stages
@@ -747,6 +754,9 @@ model SourcingPayment {
   bankAccount      LedgerAccount? @relation(fields: [bankAccountId], references: [id])
   reference        String?        // bank reference / transaction id
   notes            String?
+  /// Who was paid, when it isn't simply the order's supplier (e.g. a freight forwarder's invoice). Optional.
+  contactId        String?
+  contact          Contact?       @relation("PaymentContact", fields: [contactId], references: [id], onDelete: SetNull)
   createdAt        DateTime       @default(now())
 
   /// Supplier invoices/receipts attached to this specific payment (optional).
@@ -754,6 +764,7 @@ model SourcingPayment {
 
   @@index([sourcingRecordId])
   @@index([bankAccountId])
+  @@index([contactId])
 }
 
 /// A quality-control / inspection cost incurred for a sourcing order (e.g. a third-party
@@ -763,13 +774,16 @@ model SourcingInspection {
   sourcingRecordId String
   sourcingRecord   SourcingRecord @relation(fields: [sourcingRecordId], references: [id], onDelete: Cascade)
   date             DateTime
-  inspector        String?        // inspection company / person
+  inspector        String?        // inspection company / person, as typed (kept for history)
+  inspectorId      String?        // the inspection company in Contacts, when one was picked
+  inspectorContact Contact?       @relation("InspectionContact", fields: [inspectorId], references: [id], onDelete: SetNull)
   result           String         @default("PENDING") // PENDING | PASSED | FAILED | PASSED_WITH_NOTES
   costCents        Int            @default(0) // in the order's currency
   notes            String?
   createdAt        DateTime       @default(now())
 
   @@index([sourcingRecordId])
+  @@index([inspectorId])
 }
 
 /// Shipping / freight financial details for a sourcing order. Split out from the order
@@ -779,7 +793,16 @@ model SourcingShipment {
   sourcingRecordId    String
   sourcingRecord      SourcingRecord @relation(fields: [sourcingRecordId], references: [id], onDelete: Cascade)
   method              String?        // SEA | AIR | COURIER | ROAD | OTHER
-  carrier             String?
+  carrier             String?        // carrier / forwarder as typed (kept for history)
+  /// Contacts-book links. All optional; each is matched to the contact types that make sense for it in the UI.
+  forwarderId         String?
+  forwarder           Contact?       @relation("ShipmentForwarder", fields: [forwarderId], references: [id], onDelete: SetNull)
+  customsAgentId      String?
+  customsAgent        Contact?       @relation("ShipmentCustomsAgent", fields: [customsAgentId], references: [id], onDelete: SetNull)
+  logisticsId         String?
+  logistics           Contact?       @relation("ShipmentLogistics", fields: [logisticsId], references: [id], onDelete: SetNull)
+  warehouseId         String?
+  warehouse           Contact?       @relation("ShipmentWarehouse", fields: [warehouseId], references: [id], onDelete: SetNull)
   trackingNumber      String?
   shippedDate         DateTime?
   eta                 DateTime?
@@ -795,6 +818,92 @@ model SourcingShipment {
   documents           Document[]
 
   @@index([sourcingRecordId])
+  @@index([forwarderId])
+  @@index([customsAgentId])
+  @@index([logisticsId])
+  @@index([warehouseId])
+}
+
+// ---------------------------------------------------------------------------
+// Contacts (Company Finance): one place to keep the businesses you deal with —
+// suppliers/manufacturers, freight forwarders, inspectors, customs agents,
+// warehouses, customers — so they are entered once and picked everywhere else.
+// A Contact is the ORGANISATION (so one company that is both supplier and
+// manufacturer is a single record with several types); the individual people
+// at it are ContactPerson rows. Records that used to carry the business's name
+// as free text now also point at the Contact; the old text is kept for history.
+// ---------------------------------------------------------------------------
+
+/// A business or organisation Company Finance deals with.
+model Contact {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String    // business / company name
+  /// Comma-wrapped list of contact types, e.g. ",SUPPLIER_MANUFACTURER,FREIGHT_FORWARDER," (see CONTACT_TYPES).
+  /// Stored as text so it stays portable between Postgres and SQLite; the wrapping commas make an exact-type match a plain `contains`.
+  types       String    @default(",OTHER,")
+  /// Lower-cased, whitespace-collapsed name — used to spot duplicates ("ABC Manufacturing Co Ltd" vs "abc  manufacturing co ltd").
+  nameKey     String
+
+  country     String?
+  state       String?
+  city        String?
+  address     String?
+  website     String?
+
+  email       String?
+  phone       String?
+  mobile      String?
+  whatsapp    String?
+  wechat      String?
+  otherContact String?  // any other messaging/contact method (free text)
+
+  abn                String?
+  registrationNumber String?
+  taxNumber          String?  // VAT / GST / tax ID for overseas businesses
+  paymentTerms       String?
+  currency           String?  // usual currency, ISO 4217
+  notes              String?
+
+  isArchived  Boolean   @default(false)
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  people ContactPerson[]
+
+  orders            SourcingRecord[]     @relation("OrderSupplier")
+  payments          SourcingPayment[]    @relation("PaymentContact")
+  inspections       SourcingInspection[] @relation("InspectionContact")
+  forwarderShipments  SourcingShipment[] @relation("ShipmentForwarder")
+  customsShipments    SourcingShipment[] @relation("ShipmentCustomsAgent")
+  logisticsShipments  SourcingShipment[] @relation("ShipmentLogistics")
+  warehouseShipments  SourcingShipment[] @relation("ShipmentWarehouse")
+  entries           BusinessEntry[]
+
+  @@index([householdId, isArchived])
+  @@index([householdId, nameKey])
+}
+
+/// An individual at a Contact's organisation (sales, accounts, logistics…).
+model ContactPerson {
+  id        String   @id @default(cuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  name      String
+  role      String?
+  email     String?
+  phone     String?
+  mobile    String?
+  whatsapp  String?
+  wechat    String?
+  notes     String?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contactId])
 }
 
 // ---------------------------------------------------------------------------

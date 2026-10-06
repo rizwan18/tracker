@@ -20,6 +20,8 @@ import BusinessReportsPage from "./pages/business/BusinessReportsPage";
 import ProductsPage from "./pages/business/ProductsPage";
 import ProductDetailPage from "./pages/business/ProductDetailPage";
 import SourcingDetailPage from "./pages/business/SourcingDetailPage";
+import ContactsPage from "./pages/business/ContactsPage";
+import ContactDetailPage from "./pages/business/ContactDetailPage";
 import MoneyPage from "./pages/MoneyPage";
 import PropertiesPage from "./pages/PropertiesPage";
 import PropertyDetailPage from "./pages/PropertyDetailPage";
@@ -78,6 +80,8 @@ export default function App() {
               {/* The old Sourcing tab is now Products/SKU: its list address redirects, and old order links (/business/sourcing/:id) still open the order. */}
               <Route path="/business/sourcing" element={<Navigate to="/business/products" replace />} />
               <Route path="/business/sourcing/:id" element={<RequireCompany><SourcingDetailPage /></RequireCompany>} />
+              <Route path="/business/contacts" element={<RequireCompany><ContactsPage /></RequireCompany>} />
+              <Route path="/business/contacts/:id" element={<RequireCompany><ContactDetailPage /></RequireCompany>} />
               <Route path="/business/reports" element={<RequireCompany><BusinessReportsPage /></RequireCompany>} />
               <Route path="/business/accounts" element={<RequireCompany><BusinessAccountsPage /></RequireCompany>} />
               <Route path="/business/journal" element={<RequireCompany><BusinessJournalPage /></RequireCompany>} />

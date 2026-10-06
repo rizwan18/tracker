@@ -158,6 +158,23 @@ export type SourcingInspectionResult = (typeof SOURCING_INSPECTION_RESULTS)[numb
 export const SOURCING_SHIPMENT_METHODS = ["SEA", "AIR", "COURIER", "ROAD", "OTHER"] as const;
 export type SourcingShipmentMethod = (typeof SOURCING_SHIPMENT_METHODS)[number];
 
+// Contacts (Company Finance)
+export const CONTACT_TYPES = [
+  "SUPPLIER_MANUFACTURER", "FREIGHT_FORWARDER", "INSPECTION", "CUSTOMS_AGENT", "LOGISTICS", "WAREHOUSE_3PL", "CUSTOMER", "OTHER",
+] as const;
+export type ContactType = (typeof CONTACT_TYPES)[number];
+
+export const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
+  SUPPLIER_MANUFACTURER: "Supplier / Manufacturer",
+  FREIGHT_FORWARDER: "Freight Forwarder",
+  INSPECTION: "Inspection Company",
+  CUSTOMS_AGENT: "Customs / Import Agent",
+  LOGISTICS: "Shipping / Logistics",
+  WAREHOUSE_3PL: "Warehouse / 3PL",
+  CUSTOMER: "Customer",
+  OTHER: "Other",
+};
+
 // Holiday planner (Personal Finance)
 export const HOLIDAY_STATUSES = ["IDEA", "PLANNING", "BOOKED", "COMPLETED", "CANCELLED"] as const;
 export type HolidayStatus = (typeof HOLIDAY_STATUSES)[number];

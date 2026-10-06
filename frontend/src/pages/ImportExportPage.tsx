@@ -88,6 +88,10 @@ export default function ImportExportPage() {
               <Link to="/business/reports" className="text-sm font-medium text-[var(--color-sky)] hover:underline">
                 Go to Reports →
               </Link>
+              <span className="mx-2 text-[var(--color-ink-soft)]">·</span>
+              <Link to="/business/contacts" className="text-sm font-medium text-[var(--color-sky)] hover:underline">
+                Contacts import &amp; export →
+              </Link>
             </div>
           </Card>
         </div>
