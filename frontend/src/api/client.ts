@@ -75,7 +75,32 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+/**
+ * Fetch a file (PDF, Word, Excel…) with the person's sign-in. `api.get` only hands back a Blob for CSV and
+ * pictures, so attachments use this. Errors come back as the server's plain-English message.
+ */
+async function downloadFile(path: string): Promise<{ blob: Blob; fileName: string | null }> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE_URL}/api${path}`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(getActivePortfolioId() ? { "X-Portfolio-Id": getActivePortfolioId() as string } : {}) },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(data.error || "We couldn't open that file. Please try again.", res.status, data);
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  let fileName: string | null = null;
+  try {
+    fileName = utf8 ? decodeURIComponent(utf8) : null;
+  } catch {
+    fileName = null;
+  }
+  return { blob: await res.blob(), fileName };
+}
+
 export const api = {
+  download: downloadFile,
   get: <T>(path: string) => request<T>(path, { method: "GET" }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body: JSON.stringify(body) }),

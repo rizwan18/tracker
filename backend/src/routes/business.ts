@@ -12,6 +12,7 @@ import { resolveBasPeriod } from "../services/business/basPeriods";
 import { isFixedAsset } from "../services/business/chart";
 import { PostingError, assertBalanced } from "../services/business/posting";
 import { ensureBusinessSetup, loadAccounts, loadLines, parseDay, repostEntry } from "../services/business/ledgerStore";
+import { removeFilesQuietly } from "../lib/attachmentStorage";
 import {
   aggregate, buildAgedReport, buildBalanceSheet, buildCashSummary, buildGstReport, buildIncomeStatement, buildLedger, buildMonthly, buildTrialBalance,
   endOfDayUtc, financialYearRangeUtc, financialYearStartYearUtc, naturalBalance, netProfit, type AccountRef,
@@ -139,7 +140,7 @@ router.delete(
 );
 
 // --------------------------------------------------------------------------- sales & expenses
-const entryInclude = { account: { select: { id: true, code: true, name: true } }, bankAccount: { select: { id: true, code: true, name: true } }, contact: { select: contactRefSelect } } as const;
+const entryInclude = { account: { select: { id: true, code: true, name: true } }, bankAccount: { select: { id: true, code: true, name: true } }, contact: { select: contactRefSelect }, _count: { select: { attachments: true } } } as const;
 
 type EntryWithAccounts = Prisma.BusinessEntryGetPayload<{ include: typeof entryInclude }>;
 
@@ -148,6 +149,8 @@ function entryDto(e: EntryWithAccounts) {
     id: e.id, kind: e.kind, date: iso(e.date), dueDate: iso(e.dueDate), description: e.description, contactName: e.contactName, contactId: e.contactId, contact: contactRefDto(e.contact), reference: e.reference,
     account: e.account, totalCents: e.totalCents, gstCents: e.gstCents, netCents: e.totalCents - e.gstCents, gstMode: e.gstMode, status: e.status,
     paidDate: iso(e.paidDate), bankAccount: e.bankAccount, notes: e.notes,
+    // How many supporting files (receipts, invoices…) are attached; the files themselves come from /entries/:id/attachments.
+    attachmentCount: e._count?.attachments ?? 0,
   };
 }
 
@@ -290,10 +293,15 @@ router.delete(
   "/entries/:id",
   asyncHandler(async (req: AuthedRequest, res) => {
     const { householdId, entry } = await findEntry(req);
+    const files = await prisma.businessEntryAttachment.findMany({ where: { entryId: entry.id, householdId }, select: { storageKey: true } });
     await prisma.$transaction([
       prisma.journalEntry.deleteMany({ where: { householdId, sourceId: entry.id } }),
+      // The database would remove these with the expense anyway (cascade); doing it explicitly keeps that visible here.
+      prisma.businessEntryAttachment.deleteMany({ where: { entryId: entry.id, householdId } }),
       prisma.businessEntry.delete({ where: { id: entry.id } }),
     ]);
+    // The expense is gone for good, so its stored files go too (best effort — a failure is logged, never shown as an error).
+    await removeFilesQuietly(files.map((f) => f.storageKey));
     res.json({ message: "Deleted." });
   })
 );

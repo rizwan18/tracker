@@ -49,6 +49,7 @@ model Household {
   businessProfile  BusinessProfile?
   ledgerAccounts   LedgerAccount[]
   businessEntries  BusinessEntry[]
+  businessEntryAttachments BusinessEntryAttachment[]
   journalEntries   JournalEntry[]
   accounts      Account[]
   categories    Category[]
@@ -605,9 +606,32 @@ model BusinessEntry {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  attachments   BusinessEntryAttachment[]
+
   @@index([householdId, date])
   @@index([householdId, kind, status])
   @@index([contactId])
+}
+
+/// A supporting file (invoice, receipt, statement…) attached to a company expense. The file itself lives in
+/// Vercel Blob; only this metadata row is in the database. Files are never reachable by a public link — the app
+/// serves them through an authenticated, household-scoped route. Deleting the expense (or the portfolio) removes
+/// these rows; the route that deletes an expense also removes the stored files.
+model BusinessEntryAttachment {
+  id           String        @id @default(cuid())
+  householdId  String        // copied from the expense so every query can be scoped to the active portfolio directly
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  entryId      String
+  entry        BusinessEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  fileName     String        // the name shown to people and used for downloads (cleaned; never used to build a storage path)
+  contentType  String        // worked out from the file's own bytes on the server, never taken from the browser
+  sizeBytes    Int
+  storageKey   String        // where the file is kept: a blob pathname (private store) or blob URL (public store). Never sent to the browser.
+  uploadedById String
+  createdAt    DateTime      @default(now())
+
+  @@index([entryId])
+  @@index([householdId])
 }
 
 model JournalEntry {
