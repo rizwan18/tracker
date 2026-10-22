@@ -43,6 +43,26 @@ export interface BusinessEntry {
   paidDate: string | null;
   bankAccount: { id: string; code: string; name: string } | null;
   notes: string | null;
+  /** Supporting files attached to this expense (always 0 for sales). */
+  attachmentCount?: number;
+}
+
+/** A file attached to a company expense. The server never reveals where it is stored. */
+export interface ExpenseAttachment {
+  id: string;
+  entryId: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  previewable: boolean;
+}
+
+export interface AttachmentLimits {
+  maxBytes: number;
+  maxFiles: number;
+  extensions: string[];
+  summary: string;
 }
 
 export interface BusinessSummary {

@@ -17,6 +17,7 @@ import documentRoutes from "./routes/documents";
 import dataRoutes from "./routes/data";
 import portfolioRoutes from "./routes/portfolios";
 import businessRoutes from "./routes/business";
+import businessAttachmentRoutes from "./routes/businessAttachments";
 import sourcingRoutes from "./routes/sourcing";
 import sourcingProductRoutes from "./routes/sourcingProducts";
 import contactRoutes from "./routes/contacts";
@@ -54,6 +55,8 @@ export function createApp() {
   app.use("/api/documents", documentRoutes);
   app.use("/api/data", dataRoutes);
   app.use("/api/portfolios", portfolioRoutes);
+  // Expense attachments guard each of their own routes, so they sit ahead of the general business router and its checks run once, not twice.
+  app.use("/api/business", businessAttachmentRoutes);
   app.use("/api/business", businessRoutes);
   app.use("/api/business/sourcing", sourcingRoutes);
   app.use("/api/business/products", sourcingProductRoutes);

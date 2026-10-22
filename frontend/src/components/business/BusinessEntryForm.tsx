@@ -3,6 +3,8 @@ import { api, ApiError } from "../../api/client";
 import type { BusinessEntry, BusinessProfile, ContactRef, LedgerAccount } from "../../api/businessTypes";
 import { Button, Field, inputClass } from "../ui";
 import { ContactPicker } from "./ContactPicker";
+import { ExpenseAttachments } from "./ExpenseAttachments";
+import { uploadStaged, type StagedFile } from "../../lib/attachments";
 import { PICK_FOR } from "../../lib/contacts";
 import { centsToInput, computeGst, formatCents, toCents, type GstMode } from "../../lib/money";
 import { toInputDate } from "../../lib/format";
@@ -62,6 +64,11 @@ export function BusinessEntryForm({
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Files for an expense (not a sale). They are uploaded right after the expense is saved, so they attach to its real id.
+  const [staged, setStaged] = useState<StagedFile[]>([]);
+  const [savedId, setSavedId] = useState<string | null>(null); // set once the expense is saved, so a retry never creates it twice
+  const [reloadKey, setReloadKey] = useState(0);
+  const entryId = initial?.id ?? savedId;
 
   const cents = toCents(amount);
   // The typed GST: blank counts as $0; anything that isn't a valid non-negative amount is null.
@@ -108,8 +115,22 @@ export function BusinessEntryForm({
         bankAccountId: status === "PAID" ? bankAccountId : null,
         notes: notes.trim() || null,
       };
-      if (initial) await api.put(`/business/entries/${initial.id}`, body);
-      else await api.post("/business/entries", body);
+      let id = savedId ?? initial?.id ?? null;
+      if (!savedId) {
+        if (initial) await api.put(`/business/entries/${initial.id}`, body);
+        else id = (await api.post<BusinessEntry>("/business/entries", body)).id;
+        setSavedId(id);
+      }
+      const pending = staged.filter((f) => f.status !== "done");
+      if (!isSale && id && pending.length > 0) {
+        const { failed } = await uploadStaged(id, pending, (key, patch) => setStaged((cur) => cur.map((f) => (f.key === key ? { ...f, ...patch } : f))));
+        setReloadKey((k) => k + 1);
+        if (failed > 0) {
+          // The expense itself is saved; stay open so the files that didn't go up can be retried or dropped.
+          setError(`Your ${isSale ? "sale" : "expense"} was saved, but ${failed === 1 ? "1 file" : `${failed} files`} didn't upload. Try again, or cancel the file${failed === 1 ? "" : "s"} and close.`);
+          return;
+        }
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "We couldn't save this. Please check the details and try again.");
@@ -266,12 +287,21 @@ export function BusinessEntryForm({
         <textarea id="be-notes" rows={2} className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
 
+      {!isSale && (
+        <fieldset>
+          <legend className="block text-sm font-medium mb-1">Attachments</legend>
+          <p className="text-xs text-[var(--color-ink-soft)] mb-2">Optional. Keep the invoice or receipt with this expense for your records and BAS. Files upload when you save.</p>
+          <ExpenseAttachments entryId={entryId} staged={staged} setStaged={setStaged} disabled={saving} reloadKey={reloadKey} />
+        </fieldset>
+      )}
+
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={onCancel}>
-          Cancel
+        {/* After a save where some files failed, "Close" is the way out: the expense is already saved, so the list must refresh. */}
+        <Button type="button" variant="secondary" onClick={savedId ? onSaved : onCancel}>
+          {savedId ? "Close" : "Cancel"}
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? "Saving…" : initial ? "Save changes" : isSale ? "Save sale" : "Save expense"}
+          {saving ? (staged.some((f) => f.status === "uploading") ? "Uploading files…" : "Saving…") : savedId ? "Retry upload" : initial ? "Save changes" : isSale ? "Save sale" : "Save expense"}
         </Button>
       </div>
     </form>

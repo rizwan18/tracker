@@ -7,6 +7,7 @@ import { useBusinessBasics } from "../../hooks/useBusiness";
 import { Button, Card, EmptyState, SectionHeading, StatTile } from "../../components/ui";
 import { Modal } from "../../components/Modal";
 import { BusinessEntryForm, MarkPaidForm } from "../../components/business/BusinessEntryForm";
+import { ExpenseAttachmentsDialog } from "../../components/business/ExpenseAttachments";
 import { defaultEntryDate, formatDate } from "../../lib/format";
 import { formatCents } from "../../lib/money";
 
@@ -24,6 +25,7 @@ export default function BusinessEntriesPage({ kind }: { kind: "INCOME" | "EXPENS
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<BusinessEntry | "new" | null>(null);
   const [paying, setPaying] = useState<BusinessEntry | null>(null);
+  const [attaching, setAttaching] = useState<BusinessEntry | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -133,6 +135,15 @@ export default function BusinessEntriesPage({ kind }: { kind: "INCOME" | "EXPENS
                     {e.gstCents > 0 && <p className="text-xs text-[var(--color-ink-soft)]">incl. GST {formatCents(e.gstCents)}</p>}
                   </div>
                   <div className="flex gap-1 shrink-0">
+                    {!isSale && (
+                      <button
+                        onClick={() => setAttaching(e)}
+                        className="text-xs text-[var(--color-ink-soft)] px-2 py-1 hover:underline"
+                        aria-label={e.attachmentCount ? `${e.attachmentCount} attached ${e.attachmentCount === 1 ? "file" : "files"} for ${e.description}. Open files` : `Attach files to ${e.description}`}
+                      >
+                        📎 {e.attachmentCount ? e.attachmentCount : "Attach"}
+                      </button>
+                    )}
                     {e.status === "UNPAID" ? (
                       <button onClick={() => setPaying(e)} className="text-xs text-[var(--color-eucalyptus)] px-2 py-1 hover:underline">
                         Mark paid
@@ -174,6 +185,12 @@ export default function BusinessEntriesPage({ kind }: { kind: "INCOME" | "EXPENS
               load();
             }}
           />
+        </Modal>
+      )}
+
+      {attaching && (
+        <Modal title="Attached files" onClose={() => setAttaching(null)}>
+          <ExpenseAttachmentsDialog entryId={attaching.id} description={`${attaching.description} — ${formatCents(attaching.totalCents)}`} onChanged={load} onClose={() => setAttaching(null)} />
         </Modal>
       )}
 
