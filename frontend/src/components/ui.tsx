@@ -83,6 +83,7 @@ const GLOSSARY: Record<string, string> = {
   "Capital Gains": "Profit or loss when you sell an investment for more or less than you paid.",
   "Franking Credit": "Tax already paid by an Australian company on your behalf, credited back to you.",
   "Unrealised Gain/Loss": "The change in value of something you still own — not a real profit or loss until you sell.",
+  "Realised Gain/Loss": "The profit or loss locked in by shares you have already sold: sale proceeds (after selling fees) minus the cost base of the shares sold.",
   "Cost Base": "What an investment cost you in total, including brokerage.",
   "Net Rental Income": "Rent received minus property expenses.",
   "Rental Yield": "Annual rent as a percentage of the property's value — a quick way to compare properties.",

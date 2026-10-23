@@ -1,7 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { getFinancialYearId } from "../lib/financialYear";
 import { groupPropertyTotals, type PropertyGroupTotals } from "../lib/propertyTypes";
-import { currentValueOf } from "./holdings";
+import { currentValueOf, isClosedPosition, replayLedger } from "./holdings";
 
 /**
  * All calculations are scoped to a householdId and a financial year id
@@ -86,10 +86,10 @@ export async function realisedCapitalGains(householdId: string, financialYear: s
   const ids = investments.map((i: { id: string }) => i.id);
   if (ids.length === 0) return { gains: 0, losses: 0, net: 0 };
 
-  // A disposal ("SELL") realises a gain/loss against the average cost base
-  // of BUYs up to that point. This is a simple average-cost approach
-  // (not FIFO/LIFO/specific-parcel), clearly informational only — see the
-  // capital gains route for the disclaimer shown alongside this figure.
+  // A disposal ("SELL") realises a gain/loss against the average cost base of the BUYs up to that point
+  // (see replayLedger in holdings.ts — the one shared calculation). Sales recorded with the Sell action use
+  // the figures frozen when they were recorded. Clearly informational only — see the capital gains route
+  // for the disclaimer shown alongside this figure.
   const allTx = await prisma.investmentTransaction.findMany({
     where: { investmentId: { in: ids } },
     orderBy: { date: "asc" },
@@ -106,28 +106,11 @@ export async function realisedCapitalGains(householdId: string, financialYear: s
   let losses = 0;
 
   for (const [, txs] of byInvestment) {
-    let heldQty = 0;
-    let heldCost = 0;
-    for (const tx of txs) {
-      if (tx.type === "BUY") {
-        heldQty += tx.quantity;
-        heldCost += tx.quantity * tx.pricePerUnit + tx.brokerage;
-      } else if (tx.type === "SELL") {
-        const avgCostPerUnit = heldQty > 0 ? heldCost / heldQty : 0;
-        const costOfSold = avgCostPerUnit * tx.quantity;
-        const proceeds = tx.quantity * tx.pricePerUnit - tx.brokerage;
-        const gainLoss = proceeds - costOfSold;
-
-        // Only count this disposal if it falls in the requested FY.
-        const fyOfSale = getFinancialYearId(tx.date);
-        if (fyOfSale === financialYear) {
-          if (gainLoss >= 0) gains += gainLoss;
-          else losses += -gainLoss;
-        }
-
-        heldQty -= tx.quantity;
-        heldCost -= costOfSold;
-      }
+    for (const sale of replayLedger(txs).sales) {
+      // Only count this disposal if it falls in the requested FY.
+      if (getFinancialYearId(sale.tx.date) !== financialYear) continue;
+      if (sale.gainLoss >= 0) gains += sale.gainLoss;
+      else losses += -sale.gainLoss;
     }
   }
 
@@ -176,7 +159,10 @@ export async function portfolioValue(householdId: string): Promise<{ properties:
     }
     const lastPrice = [...inv.investmentTransactions].sort((a, b) => b.date.getTime() - a.date.getTime())[0]?.pricePerUnit ?? 0;
     // The newest statement valuation (in A$) wins, then a manual override, then units × last price.
-    const estimatedValue = currentValueOf({ valuation: inv.valuations[0] ?? null, override: inv.currentValueOverride, quantity: qty, lastPrice });
+    // A holding that has been sold down to nothing is no longer part of the portfolio (same rule as the Shares page).
+    const valuation = inv.valuations[0] ?? null;
+    const closed = isClosedPosition({ hasSells: inv.investmentTransactions.some((t) => t.type === "SELL"), unitsHeld: valuation ? valuation.units : qty });
+    const estimatedValue = closed ? 0 : currentValueOf({ valuation, override: inv.currentValueOverride, quantity: qty, lastPrice });
     if (inv.type === "SHARE" || inv.type === "ETF" || inv.type === "LIC") {
       sharesValue += estimatedValue;
     } else {

@@ -6,6 +6,7 @@ import { Button, Card, EmptyState, SectionHeading, HelpText } from "../component
 import { Modal } from "../components/Modal";
 import { InvestmentForm } from "../components/InvestmentForm";
 import { HoldingsTable } from "../components/HoldingsTable";
+import { SellSharesDialog } from "../components/SellSharesDialog";
 import { isStock, marketOf } from "../lib/holdings";
 import { formatCurrency, formatCurrencySigned } from "../lib/format";
 
@@ -27,6 +28,7 @@ export default function InvestmentsPage() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [sellTarget, setSellTarget] = useState<Investment | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -59,7 +61,13 @@ export default function InvestmentsPage() {
   // Only holdings with a buy/sell history have a cost to compare against.
   const withCost = investments.filter((i) => i.summary.costBaseKnown !== false);
   const totalUnrealised = withCost.reduce((s, i) => s + i.summary.unrealisedGainLoss, 0);
-  const stocks = investments.filter(isStock);
+  // Realised (from shares already sold) is kept apart from the unrealised figure above, which only covers what is still held.
+  const hasSales = investments.some((i) => i.investmentTransactions.some((t) => t.type === "SELL"));
+  const totalRealised = investments.reduce((s, i) => s + i.summary.realisedGain - i.summary.realisedLoss, 0);
+  const allStocks = investments.filter(isStock);
+  // A holding sold down to nothing is closed: kept, with its history, but listed separately from what you hold.
+  const stocks = allStocks.filter((i) => !i.summary.closed);
+  const closedStocks = allStocks.filter((i) => i.summary.closed);
   const asxStocks = stocks.filter((i) => marketOf(i) === "ASX");
   const usStocks = stocks.filter((i) => marketOf(i) === "WALL_ST");
   // Crypto, managed funds and term deposits have their own page now (see
@@ -89,7 +97,7 @@ export default function InvestmentsPage() {
       />
 
       {!loading && investments.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid grid-cols-2 gap-3 ${hasSales ? "sm:grid-cols-3" : ""}`}>
           <Card>
             <p className="text-sm text-[var(--color-ink-soft)]">Total portfolio value</p>
             <p className="font-display text-2xl font-semibold mt-1">{formatCurrency(totalValue)}</p>
@@ -108,6 +116,17 @@ export default function InvestmentsPage() {
               <p className={`font-display text-2xl font-semibold mt-1 ${totalUnrealised >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}`}>{formatCurrencySigned(totalUnrealised)}</p>
             )}
           </Card>
+          {hasSales && (
+            <Card>
+              <p className="text-sm text-[var(--color-ink-soft)]">
+                <HelpText term="Realised Gain/Loss">
+                  <span>Realised gain/loss</span>
+                </HelpText>
+              </p>
+              <p className={`font-display text-2xl font-semibold mt-1 ${totalRealised >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}`}>{formatCurrencySigned(totalRealised)}</p>
+              <p className="text-xs text-[var(--color-ink-soft)] mt-1">From shares you've sold, all time</p>
+            </Card>
+          )}
         </div>
       )}
 
@@ -121,9 +140,38 @@ export default function InvestmentsPage() {
         />
       ) : (
         <div className="space-y-8">
-          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} />}
-          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} />}
+          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} onSell={setSellTarget} />}
+          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} onSell={setSellTarget} />}
           {stocks.length > 0 && latestStatement === undefined && <p className="text-xs text-[var(--color-ink-soft)]">Units and prices come from what you record on each holding.</p>}
+
+          {closedStocks.length > 0 && (
+            <section>
+              <h3 className="font-display text-lg font-semibold mb-2">Closed holdings</h3>
+              <Card className="p-0 overflow-hidden">
+                <ul className="divide-y divide-[var(--color-line)]">
+                  {closedStocks.map((inv) => {
+                    const realised = inv.summary.realisedGain - inv.summary.realisedLoss;
+                    return (
+                      <li key={inv.id}>
+                        <Link to={`/investments/${inv.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-[var(--color-paper-dim)]">
+                          <div>
+                            <p className="font-medium text-[var(--color-ink)]">
+                              {inv.name} {inv.ticker && <span className="text-[var(--color-ink-soft)] font-normal">({inv.ticker})</span>}
+                            </p>
+                            <p className="text-xs text-[var(--color-ink-soft)]">Fully sold — history kept</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-[var(--color-ink-soft)]">Realised</p>
+                            <p className={`font-medium ${realised >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}`}>{formatCurrencySigned(realised)}</p>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            </section>
+          )}
 
           {others.length > 0 && (
             <section>
@@ -153,6 +201,17 @@ export default function InvestmentsPage() {
             </section>
           )}
         </div>
+      )}
+
+      {sellTarget && (
+        <SellSharesDialog
+          investment={sellTarget}
+          onCancel={() => setSellTarget(null)}
+          onFinished={() => {
+            setSellTarget(null);
+            load();
+          }}
+        />
       )}
 
       {showForm && (

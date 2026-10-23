@@ -47,7 +47,11 @@ export const SECTION_COLUMNS: Record<SectionName, readonly string[]> = {
   property_photos: ["id", "property_id", "property", "file_name", "content_type", "file_path", "thumb_path", "is_primary"],
   investments: ["id", "name", "ticker", "type", "notes", "current_value_override", "market", "currency"],
   investment_valuations: ["id", "investment_id", "investment", "as_at", "units", "market_price", "market_value", "market_value_aud", "currency", "source"],
-  investment_transactions: ["id", "investment_id", "investment", "type", "date", "quantity", "price_per_unit", "brokerage", "notes"],
+  investment_transactions: [
+    "id", "investment_id", "investment", "type", "date", "quantity", "price_per_unit", "brokerage", "notes",
+    // Frozen figures of a sale recorded with the Sell action (blank on buys and older sells). Optional on import.
+    "gross_proceeds_cents", "net_proceeds_cents", "cost_base_cents", "gain_loss_cents", "cost_method", "client_request_id",
+  ],
   dividends: [
     "id", "investment_id", "investment", "ex_dividend_date", "payment_date", "gross_amount", "franking_credit", "franked_amount",
     "unfranked_amount", "tax_withheld", "net_amount", "status", "notes", "financial_year",

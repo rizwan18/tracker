@@ -569,7 +569,7 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
           marketValue: r.num("market_value", { required: true, min: 0 }) ?? 0,
           marketValueAud: r.num("market_value_aud", { required: true, min: 0 }) ?? 0,
           currency: r.oneOf("currency", ["AUD", "USD"] as const, { fallback: "AUD" }) ?? "AUD",
-          source: r.oneOf("source", ["STAKE", "MANUAL"] as const, { fallback: "MANUAL" }) ?? "MANUAL",
+          source: r.oneOf("source", ["STAKE", "MANUAL", "SALE"] as const, { fallback: "MANUAL" }) ?? "MANUAL",
         };
         return r.failed ? null : rec;
       },
@@ -592,6 +592,13 @@ export function planImport(parsed: ParsedFile, ctx: ImportContext, opts: { inclu
           pricePerUnit: r.num("price_per_unit", { required: true, min: 0 }) ?? 0,
           brokerage: r.num("brokerage", { min: 0 }) ?? 0,
           notes: r.str("notes", 5000),
+          // Sale snapshot (absent in older exports — then the sale is simply worked out from the ledger as before).
+          grossProceedsCents: r.int("gross_proceeds_cents"),
+          netProceedsCents: r.int("net_proceeds_cents"),
+          costBaseCents: r.int("cost_base_cents"),
+          gainLossCents: r.int("gain_loss_cents"),
+          costMethod: r.str("cost_method", 40),
+          clientRequestId: r.str("client_request_id", 100),
         };
         return r.failed ? null : rec;
       },

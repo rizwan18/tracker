@@ -153,6 +153,70 @@ export interface InvestmentTransactionRecord {
   pricePerUnit: number;
   brokerage: number;
   notes: string | null;
+  /** Set only on a sale recorded with the Sell action: the figures frozen when it was recorded, in whole cents of the holding's currency. */
+  grossProceedsCents?: number | null;
+  netProceedsCents?: number | null;
+  costBaseCents?: number | null;
+  gainLossCents?: number | null;
+  /** How the cost base was allocated, e.g. "AVERAGE_COST". */
+  costMethod?: string | null;
+  createdAt?: string;
+}
+
+/** Whether a holding can be sold with the Sell action (and how many units), and why not if it can't. */
+export interface Sellability {
+  canSell: boolean;
+  availableQuantity: number;
+  reason: string | null;
+}
+
+export type SaleOutcome = "GAIN" | "LOSS" | "BREAK_EVEN";
+
+/** What the server works out for a proposed sale — shown for review before it is recorded. All money in whole cents. */
+export interface SalePreview {
+  investmentId: string;
+  name: string;
+  ticker: string | null;
+  currency: "AUD" | "USD";
+  saleDate: string;
+  quantity: number;
+  pricePerShare: number;
+  grossProceedsCents: number;
+  feesCents: number;
+  netProceedsCents: number;
+  costBaseCents: number;
+  gainLossCents: number;
+  outcome: SaleOutcome;
+  costBasePerShare: number;
+  poolQuantity: number;
+  poolCostBaseCents: number;
+  availableQuantity: number;
+  remainingQuantity: number;
+  remainingCostBaseCents: number;
+  closesHolding: boolean;
+  costMethod: string;
+}
+
+export interface SaleResult {
+  /** True when this request had already been recorded (e.g. a double-click): nothing new was written. */
+  duplicate: boolean;
+  sale: {
+    id: string;
+    investmentId: string;
+    saleDate: string;
+    quantity: number;
+    pricePerShare: number;
+    grossProceedsCents: number;
+    feesCents: number;
+    netProceedsCents: number;
+    costBaseCents: number;
+    gainLossCents: number;
+    outcome: SaleOutcome;
+    costMethod: string;
+    recordedAt: string;
+  };
+  remainingQuantity: number;
+  closed: boolean;
 }
 
 export interface Investment {
@@ -186,7 +250,11 @@ export interface Investment {
     unrealisedGainLoss: number;
     realisedGain: number;
     realisedLoss: number;
+    /** Sold down to nothing: kept, with its history, but no longer an active holding. */
+    closed?: boolean;
   };
+  /** Whether the Sell action is available for this holding. */
+  sellable?: Sellability;
   /** The newest dated valuation (from a Stake statement or entered by hand). */
   holding?: Holding | null;
   /** Past valuations, newest first (detail page only). */
@@ -201,7 +269,7 @@ export interface Holding {
   marketValue: number;
   marketValueAud: number;
   currency: "AUD" | "USD";
-  source: "STAKE" | "MANUAL";
+  source: "STAKE" | "MANUAL" | "SALE";
   /** This holding's share of the whole share portfolio, in percent. */
   weightingPercent: number;
   /** Read-only live market quote/value. Blank (null) until a market data source is wired in. */
@@ -219,7 +287,7 @@ export interface HoldingValuation {
   marketValue: number;
   marketValueAud: number;
   currency: "AUD" | "USD";
-  source: "STAKE" | "MANUAL";
+  source: "STAKE" | "MANUAL" | "SALE";
 }
 
 export interface StakePreviewHolding {
@@ -307,6 +375,9 @@ export interface CapitalGainDisposal {
   quantity: number;
   salePrice: number;
   saleCosts: number;
+  /** Units × sale price, before selling fees. */
+  grossProceeds: number;
+  /** Net proceeds: gross proceeds − selling fees. */
   proceeds: number;
   costBase: number;
   grossGainLoss: number;
@@ -315,6 +386,9 @@ export interface CapitalGainDisposal {
   eligibleForDiscountInformationalOnly: boolean | null;
   notes: string | null;
   hasDocuments: boolean;
+  /** When the sale was recorded in the app (not the sale date). */
+  recordedAt: string | null;
+  costMethod: string | null;
 }
 
 export interface ScheduleLine {

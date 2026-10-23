@@ -5,6 +5,7 @@ import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { capitalGainSchema } from "../lib/validation";
 import { getFinancialYearId } from "../lib/financialYear";
 import { calculateDisposal } from "../lib/capitalGains";
+import { replayLedger } from "../services/holdings";
 
 const router = Router();
 router.use(requireAuth);
@@ -32,6 +33,9 @@ interface DisposalRow {
   quantity: number;
   salePrice: number;
   saleCosts: number;
+  /** quantity × sale price, before selling fees. */
+  grossProceeds: number;
+  /** Net proceeds: gross proceeds − selling fees. */
   proceeds: number;
   costBase: number;
   grossGainLoss: number;
@@ -40,6 +44,10 @@ interface DisposalRow {
   eligibleForDiscountInformationalOnly: boolean | null;
   notes: string | null;
   hasDocuments: boolean;
+  /** When the sale was recorded in the app (not the sale date). */
+  recordedAt: Date | null;
+  /** How the cost base was allocated, when it was recorded with the Sell action ("AVERAGE_COST"). */
+  costMethod: string | null;
 }
 
 /**
@@ -65,49 +73,35 @@ router.get(
     const automatic: DisposalRow[] = [];
 
     for (const inv of investments) {
-      let heldQty = 0;
-      let heldCost = 0;
-      const buyDates: Date[] = [];
-      for (const tx of inv.investmentTransactions) {
-        if (tx.type === "BUY") {
-          heldQty += tx.quantity;
-          heldCost += tx.quantity * tx.pricePerUnit + tx.brokerage;
-          buyDates.push(tx.date);
-        } else {
-          const avgCost = heldQty > 0 ? heldCost / heldQty : 0;
-          const costOfSold = avgCost * tx.quantity;
-          const proceeds = tx.quantity * tx.pricePerUnit - tx.brokerage;
-          const gainLoss = proceeds - costOfSold;
-          const fy = getFinancialYearId(tx.date);
-          const earliestBuy = buyDates[0];
-          const holdingDays = earliestBuy ? Math.round((tx.date.getTime() - earliestBuy.getTime()) / (1000 * 60 * 60 * 24)) : null;
-
-          if (!financialYear || fy === financialYear) {
-            automatic.push({
-              id: tx.id,
-              source: "automatic",
-              investmentId: inv.id,
-              investmentName: inv.name,
-              ticker: inv.ticker,
-              acquisitionDate: earliestBuy ?? null,
-              saleDate: tx.date,
-              quantity: tx.quantity,
-              salePrice: tx.pricePerUnit,
-              saleCosts: tx.brokerage,
-              proceeds,
-              costBase: costOfSold,
-              grossGainLoss: gainLoss,
-              financialYear: fy,
-              holdingPeriodDays: holdingDays,
-              eligibleForDiscountInformationalOnly: holdingDays !== null ? holdingDays > 365 : null,
-              notes: null,
-              hasDocuments: false,
-            });
-          }
-
-          heldQty -= tx.quantity;
-          heldCost -= costOfSold;
-        }
+      // The shared average-cost replay (services/holdings.ts). Sales recorded with the Sell action report the
+      // figures frozen when they were recorded; older SELL rows are worked out here.
+      for (const { tx, costOfSold, proceeds, gainLoss, firstBuyDate } of replayLedger(inv.investmentTransactions).sales) {
+        const fy = getFinancialYearId(tx.date);
+        if (financialYear && fy !== financialYear) continue;
+        const holdingDays = firstBuyDate ? Math.round((tx.date.getTime() - firstBuyDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+        automatic.push({
+          id: tx.id,
+          source: "automatic",
+          investmentId: inv.id,
+          investmentName: inv.name,
+          ticker: inv.ticker,
+          acquisitionDate: firstBuyDate,
+          saleDate: tx.date,
+          quantity: tx.quantity,
+          salePrice: tx.pricePerUnit,
+          saleCosts: tx.brokerage,
+          grossProceeds: tx.grossProceedsCents != null ? tx.grossProceedsCents / 100 : tx.quantity * tx.pricePerUnit,
+          proceeds,
+          costBase: costOfSold,
+          grossGainLoss: gainLoss,
+          financialYear: fy,
+          holdingPeriodDays: holdingDays,
+          eligibleForDiscountInformationalOnly: holdingDays !== null ? holdingDays > 365 : null,
+          notes: null,
+          hasDocuments: false,
+          recordedAt: tx.createdAt,
+          costMethod: tx.costMethod ?? null,
+        });
       }
     }
 
@@ -128,6 +122,7 @@ router.get(
       quantity: d.quantity,
       salePrice: d.salePrice,
       saleCosts: d.saleCosts,
+      grossProceeds: d.salePrice * d.quantity * (d.ownershipPercentage / 100),
       proceeds: d.proceeds,
       costBase: d.costBase,
       grossGainLoss: d.grossGainLoss,
@@ -136,6 +131,8 @@ router.get(
       eligibleForDiscountInformationalOnly: d.holdingPeriodDays > 365,
       notes: d.notes,
       hasDocuments: d.documents.length > 0,
+      recordedAt: d.createdAt,
+      costMethod: null,
     }));
 
     const items = [...automatic, ...manual].sort((a, b) => b.saleDate.getTime() - a.saleDate.getTime());

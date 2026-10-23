@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Investment } from "../api/types";
-import { Card } from "./ui";
+import { Button, Card } from "./ui";
 import { MARKET_TITLES, formatPercent, formatPrice, formatUnits, formatUsd } from "../lib/holdings";
 import { formatDateUtc, formatDateTime, formatMoney } from "../lib/format";
 
@@ -32,7 +32,7 @@ const gainLossCls = (n: number) => (n >= 0 ? "text-[var(--color-eucalyptus)]" : 
  * (cost base unknown), and is blank ("—") in the market columns only if it has neither a live
  * price nor any recorded valuation at all.
  */
-export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST"; holdings: Investment[] }) {
+export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "WALL_ST"; holdings: Investment[]; onSell?: (inv: Investment) => void }) {
   const isUs = market === "WALL_ST";
   const currency = isUs ? "USD" : "AUD";
   const rows = holdings.map((inv) => {
@@ -107,11 +107,12 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
               <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Market Price</th>
               <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Market Value</th>
               <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Unrealised Gain/Loss</th>
+              {onSell && <th className="px-4 py-2.5 font-medium text-right sticky right-0 bg-[var(--color-paper-dim)]"><span className="sr-only">Actions</span></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-line)]">
             {rows.map(({ inv, weighting, units, price, value, marketPrice, marketPriceAsAt, marketPriceIsLive, marketValue, unrealisedGainLoss }) => (
-              <tr key={inv.id} className="hover:bg-[var(--color-paper-dim)]">
+              <tr key={inv.id} className="group hover:bg-[var(--color-paper-dim)]">
                 <td className="px-4 py-3 font-medium">
                   <Link to={`/investments/${inv.id}`} className="text-[var(--color-eucalyptus-dark)] hover:underline">
                     {inv.ticker ?? "—"}
@@ -144,6 +145,15 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
                 <td className={`px-4 py-3 text-right tabular-nums font-medium ${unrealisedGainLoss !== null ? gainLossCls(unrealisedGainLoss) : ""}`}>
                   {unrealisedGainLoss !== null ? fmtSigned(unrealisedGainLoss, isUs) : dash}
                 </td>
+                {onSell && (
+                  <td className="px-3 py-2 text-right sticky right-0 bg-white group-hover:bg-[var(--color-paper-dim)]">
+                    <span title={inv.sellable && !inv.sellable.canSell ? (inv.sellable.reason ?? undefined) : undefined}>
+                      <Button size="sm" variant="secondary" disabled={!inv.sellable?.canSell} onClick={() => onSell(inv)}>
+                        Sell
+                      </Button>
+                    </span>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -159,6 +169,7 @@ export function HoldingsTable({ market, holdings }: { market: "ASX" | "WALL_ST";
               <td className={`px-4 py-3 text-right tabular-nums ${gainLossCls(sum((r) => r.unrealisedGainLoss))}`}>
                 {rows.some((r) => r.unrealisedGainLoss !== null) ? fmtSigned(sum((r) => r.unrealisedGainLoss), isUs) : dash}
               </td>
+              {onSell && <td className="sticky right-0 bg-white" />}
             </tr>
           </tfoot>
         </table>

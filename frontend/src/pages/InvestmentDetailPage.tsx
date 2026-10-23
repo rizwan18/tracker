@@ -7,9 +7,11 @@ import { Modal } from "../components/Modal";
 import { InvestmentTransactionForm } from "../components/InvestmentTransactionForm";
 import { DividendForm } from "../components/DividendForm";
 import { HoldingValuationForm } from "../components/HoldingValuationForm";
+import { SellSharesDialog } from "../components/SellSharesDialog";
 import { LinkedTransactions } from "../components/LinkedTransactions";
 import { useFinancialYear } from "../context/FinancialYearContext";
 import { formatCurrency, formatDate, formatDateUtc, formatMoney } from "../lib/format";
+import { OUTCOME_LABEL, formatCentsIn, formatCentsSigned, outcomeColour, outcomeOf } from "../lib/sale";
 import { MARKET_TITLES, formatPercent, formatPrice, formatUnits, formatUsd, isStock, marketOf } from "../lib/holdings";
 
 export default function InvestmentDetailPage() {
@@ -20,6 +22,7 @@ export default function InvestmentDetailPage() {
   const [showTxForm, setShowTxForm] = useState(false);
   const [showDividendForm, setShowDividendForm] = useState(false);
   const [showHoldingForm, setShowHoldingForm] = useState(false);
+  const [showSell, setShowSell] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -58,7 +61,7 @@ export default function InvestmentDetailPage() {
     <div className="space-y-6">
       <SectionHeading title={`${investment.name}${investment.ticker ? ` (${investment.ticker})` : ""}`} subtitle={investment.notes ?? undefined} />
 
-      {isStock(investment) && <HoldingCard investment={investment} onUpdate={() => setShowHoldingForm(true)} />}
+      {isStock(investment) && <HoldingCard investment={investment} onUpdate={() => setShowHoldingForm(true)} onSell={() => setShowSell(true)} />}
 
       <div className="grid grid-cols-2 gap-3">
         <StatTile label="Units held" value={formatUnits(investment.summary.quantity)} />
@@ -75,27 +78,45 @@ export default function InvestmentDetailPage() {
               <ul className="divide-y divide-[var(--color-line)]">
                 {[...investment.investmentTransactions]
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                  .map((tx) => (
-                    <li key={tx.id} className="flex items-center justify-between px-5 py-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${tx.type === "BUY" ? "bg-[var(--color-eucalyptus-tint)] text-[var(--color-eucalyptus-dark)]" : "bg-[var(--color-brick-tint)] text-[var(--color-brick)]"}`}>
-                          {tx.type === "BUY" ? "Buy" : "Sell"}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">
-                            {tx.quantity} @ {formatCurrency(tx.pricePerUnit)}
-                          </p>
-                          <p className="text-xs text-[var(--color-ink-soft)]">
-                            {formatDate(tx.date)}
-                            {tx.brokerage > 0 ? ` · Brokerage ${formatCurrency(tx.brokerage)}` : ""}
-                          </p>
+                  .map((tx) => {
+                    const recorded = tx.type === "SELL" && tx.gainLossCents != null && tx.netProceedsCents != null && tx.costBaseCents != null;
+                    const cur = investment.currency === "USD" ? "USD" : "AUD";
+                    return (
+                      <li key={tx.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${tx.type === "BUY" ? "bg-[var(--color-eucalyptus-tint)] text-[var(--color-eucalyptus-dark)]" : "bg-[var(--color-brick-tint)] text-[var(--color-brick)]"}`}>
+                            {tx.type === "BUY" ? "Buy" : "Sell"}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">
+                              {tx.quantity} @ {formatCurrency(tx.pricePerUnit)}
+                            </p>
+                            <p className="text-xs text-[var(--color-ink-soft)]">
+                              {formatDate(tx.date)}
+                              {tx.brokerage > 0 ? ` · ${tx.type === "SELL" ? "Fees" : "Brokerage"} ${formatCurrency(tx.brokerage)}` : ""}
+                            </p>
+                            {recorded && (
+                              <p className="text-xs mt-0.5 text-[var(--color-ink-soft)]">
+                                Net {formatCentsIn(tx.netProceedsCents!, cur)} · Cost base {formatCentsIn(tx.costBaseCents!, cur)} ·{" "}
+                                <span className={`font-medium ${outcomeColour(outcomeOf(tx.gainLossCents!))}`}>
+                                  {OUTCOME_LABEL[outcomeOf(tx.gainLossCents!)].split(" —")[0]} {tx.gainLossCents !== 0 ? formatCentsSigned(tx.gainLossCents!, cur) : ""}
+                                </span>
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <button onClick={() => handleDeleteTx(tx.id)} className="text-xs text-[var(--color-brick)] hover:underline shrink-0">
-                        Delete
-                      </button>
-                    </li>
-                  ))}
+                        {recorded ? (
+                          <span className="text-xs text-[var(--color-ink-soft)] shrink-0" title="A recorded sale is a permanent record and can't be deleted.">
+                            Recorded sale
+                          </span>
+                        ) : (
+                          <button onClick={() => handleDeleteTx(tx.id)} className="text-xs text-[var(--color-brick)] hover:underline shrink-0">
+                            Delete
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
               </ul>
             )}
           </Card>
@@ -162,7 +183,7 @@ export default function InvestmentDetailPage() {
                     <td className="px-4 py-2.5 text-right tabular-nums">{formatUnits(v.units)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{formatPrice(v.marketPrice, v.currency)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{isStockUs ? formatUsd(v.marketValue) : formatMoney(v.marketValue)}</td>
-                    <td className="px-4 py-2.5 text-[var(--color-ink-soft)]">{v.source === "STAKE" ? "Stake" : "Entered by hand"}</td>
+                    <td className="px-4 py-2.5 text-[var(--color-ink-soft)]">{v.source === "STAKE" ? "Stake" : v.source === "SALE" ? "Share sale" : "Entered by hand"}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button onClick={() => handleDeleteValuation(v.id)} className="text-xs text-[var(--color-brick)] hover:underline" aria-label={`Remove the ${formatDateUtc(v.asAt)} entry`}>
                         Delete
@@ -189,6 +210,17 @@ export default function InvestmentDetailPage() {
             }}
           />
         </Modal>
+      )}
+
+      {showSell && (
+        <SellSharesDialog
+          investment={investment}
+          onCancel={() => setShowSell(false)}
+          onFinished={() => {
+            setShowSell(false);
+            load();
+          }}
+        />
       )}
 
       {showTxForm && (
@@ -221,7 +253,7 @@ export default function InvestmentDetailPage() {
 }
 
 /** The holding's details, using the same headings as a Stake portfolio report. */
-function HoldingCard({ investment, onUpdate }: { investment: Investment; onUpdate: () => void }) {
+function HoldingCard({ investment, onUpdate, onSell }: { investment: Investment; onUpdate: () => void; onSell: () => void }) {
   const h = investment.holding ?? null;
   const market = marketOf(investment);
   const isUs = market === "WALL_ST";
@@ -241,11 +273,18 @@ function HoldingCard({ investment, onUpdate }: { investment: Investment; onUpdat
     <section>
       <SectionHeading
         title="Holding"
-        subtitle={h ? `As at ${formatDateUtc(h.asAt)} · ${h.source === "STAKE" ? "from a Stake report" : "entered by hand"}` : "No units or price recorded yet."}
+        subtitle={investment.summary.closed ? "Closed — this holding has been fully sold. Its history is kept below." : h ? `As at ${formatDateUtc(h.asAt)} · ${h.source === "STAKE" ? "from a Stake report" : h.source === "SALE" ? "updated by a share sale" : "entered by hand"}` : "No units or price recorded yet."}
         action={
-          <Button size="sm" variant="secondary" onClick={onUpdate}>
-            {h ? "Update holding" : "+ Add holding"}
-          </Button>
+          <div className="flex gap-2">
+            <span title={investment.sellable && !investment.sellable.canSell ? (investment.sellable.reason ?? undefined) : undefined}>
+              <Button size="sm" variant="secondary" disabled={!investment.sellable?.canSell} onClick={onSell}>
+                Sell
+              </Button>
+            </span>
+            <Button size="sm" variant="secondary" onClick={onUpdate}>
+              {h ? "Update holding" : "+ Add holding"}
+            </Button>
+          </div>
         }
       />
       <Card>

@@ -58,6 +58,7 @@ export function renderExportCsv(data: ExportData, now: Date = new Date(), scope:
     investment_valuations: data.valuations.map((v) => [v.id, v.investmentId, nameOf(investmentName, v.investmentId), d(v.asAt), n(v.units), n(v.marketPrice), n(v.marketValue), n(v.marketValueAud), v.currency, v.source]),
     investment_transactions: data.investmentTransactions.map((x) => [
       x.id, x.investmentId, nameOf(investmentName, x.investmentId), x.type, d(x.date), n(x.quantity), n(x.pricePerUnit), n(x.brokerage), t(x.notes),
+      n(x.grossProceedsCents), n(x.netProceedsCents), n(x.costBaseCents), n(x.gainLossCents), t(x.costMethod), t(x.clientRequestId),
     ]),
     dividends: data.dividends.map((x) => [
       x.id, x.investmentId, nameOf(investmentName, x.investmentId), d(x.exDividendDate), d(x.paymentDate), n(x.grossAmount), n(x.frankingCredit),

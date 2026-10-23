@@ -2,6 +2,8 @@ import { z } from "zod";
 import { isValidAbn, normaliseAbn } from "./abn";
 import { normaliseWebsite } from "./website";
 import { GST_MODES } from "../services/business/gst";
+import { parseSaleDate } from "./shareSale";
+import { decimalPlacesOf } from "./decimal";
 import { ACCOUNT_GROUPS, ACCOUNT_TYPES_LEDGER, GROUPS_BY_TYPE } from "../services/business/chart";
 import {
   BILL_FREQUENCIES, INVESTMENT_TYPES, INVESTMENT_TRANSACTION_TYPES, TRANSACTION_DIRECTIONS, DIVIDEND_STATUSES, RENT_FREQUENCIES, PROPERTY_TYPES, PORTFOLIO_TYPES,
@@ -103,6 +105,65 @@ export const investmentTransactionSchema = z.object({
  * aren't collected here.
  */
 export const investmentInitialTransactionSchema = investmentTransactionSchema.omit({ type: true, notes: true });
+
+/**
+ * A number typed into a form or sent as JSON. Unlike z.coerce.number() this never turns an empty value into 0 (an
+ * empty "price" must be rejected, not silently recorded as a $0 sale), and it accepts "$1,234.50".
+ */
+const typedNumber = (what: string) =>
+  z.preprocess(
+    (v) => {
+      if (typeof v !== "string") return v;
+      const t = v.replace(/[$,\s]/g, "");
+      return t === "" ? undefined : Number(t);
+    },
+    z.number({ required_error: `Please enter ${what}.`, invalid_type_error: `Please enter ${what} as a number.` }).finite(`Please enter ${what} as a number.`)
+  );
+
+/**
+ * Selling (part of) a share holding. The same rules are enforced here as in the Sell form, because the server — not
+ * the browser — is what protects the data. Money is limited to cents, prices and quantities to a sensible number of
+ * decimals, so what is recorded is exactly what was typed.
+ */
+export const shareSaleSchema = z.object({
+  quantity: typedNumber("the number of shares to sell")
+    .refine((n) => n > 0, "The quantity sold must be greater than zero.")
+    .refine((n) => n <= 1e12, "That quantity is too large.")
+    .refine((n) => decimalPlacesOf(n) <= 8, "The quantity can have at most 8 decimal places."),
+  pricePerShare: typedNumber("the sale price per share")
+    .refine((n) => n >= 0, "The sale price can't be negative.")
+    .refine((n) => n <= 1e9, "That sale price is too large.")
+    .refine((n) => decimalPlacesOf(n) <= 6, "The sale price can have at most 6 decimal places."),
+  saleDate: z
+    .string({ required_error: "Please enter the sale date.", invalid_type_error: "Please enter a valid sale date." })
+    .transform((s, ctx) => {
+      const d = parseSaleDate(s);
+      if (!d) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Please enter a valid sale date (YYYY-MM-DD)." });
+        return z.NEVER;
+      }
+      return d;
+    }),
+  // Optional: left blank (or omitted) means no fees.
+  fees: z.preprocess(
+    (v) => (v === "" || v === null ? undefined : v),
+    typedNumber("the selling fees")
+      .refine((n) => n >= 0, "Selling fees can't be negative.")
+      .refine((n) => n <= 1e9, "Those fees are too large.")
+      .refine((n) => decimalPlacesOf(n) <= 2, "Selling fees can have at most 2 decimal places (cents).")
+      .optional()
+      .default(0)
+  ),
+});
+export type ShareSaleInput = z.infer<typeof shareSaleSchema>;
+
+/** Recording a sale also needs the client's idempotency key, so a repeated submit is recorded once. */
+export const shareSaleRecordSchema = shareSaleSchema.extend({
+  clientRequestId: z
+    .string({ required_error: "Missing request id.", invalid_type_error: "Invalid request id." })
+    .regex(/^[A-Za-z0-9_-]{16,100}$/, "Invalid request id."),
+});
+export type ShareSaleRecordInput = z.infer<typeof shareSaleRecordSchema>;
 
 export const dividendSchema = z.object({
   investmentId: z.string().min(1),

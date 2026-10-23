@@ -2,8 +2,10 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
-import { investmentSchema, investmentTransactionSchema, investmentValuationSchema, investmentInitialTransactionSchema } from "../lib/validation";
-import { computeWeightings, computeHoldingSummary, currentValueOf, valueHolding, type LatestValuation } from "../services/holdings";
+import { z } from "zod";
+import { investmentSchema, investmentTransactionSchema, investmentValuationSchema, investmentInitialTransactionSchema, shareSaleSchema, shareSaleRecordSchema } from "../lib/validation";
+import { computeWeightings, computeHoldingSummary, currentValueOf, hasSaleSnapshot, sellabilityOf, valueHolding, type LatestValuation } from "../services/holdings";
+import { previewShareSale, recordShareSale } from "../services/shareSales";
 import { refreshMarketPrices } from "../services/marketPriceRefresh";
 import { isMarketOpen, toMarket } from "../lib/marketHours";
 import { STOCK_TYPES } from "../lib/constants";
@@ -14,6 +16,13 @@ router.use(requireAuth);
 function householdOf(req: AuthedRequest): string {
   if (!req.householdId) throw new FriendlyError("Please finish setting up your household first.", 400);
   return req.householdId;
+}
+
+/** Parses a request body, turning the first problem into a plain-English message (not just the field name). */
+function parseBody<S extends z.ZodTypeAny>(schema: S, body: unknown): z.infer<S> {
+  const result = schema.safeParse(body);
+  if (!result.success) throw new FriendlyError(result.error.issues[0]?.message ?? "Please check the details and try again.", 400);
+  return result.data;
 }
 
 /** Whether `inv`'s exchange is trading right now — informational only (see marketPriceRefresh.ts
@@ -66,6 +75,7 @@ router.get(
         ...rest,
         summary: computeHoldingSummary(inv.investmentTransactions, inv.currentValueOverride, valuations[0] ?? null),
         holding: holdingDto(valuations[0], weightings.get(inv.id)),
+        sellable: sellabilityOf({ type: inv.type, txs: inv.investmentTransactions, valuation: valuations[0] ?? null }),
         totalDividends: inv.dividends.filter((d) => d.status === "RECEIVED").reduce((s: number, d) => s + d.netAmount, 0),
         marketOpen: marketOpenOf(inv),
       };
@@ -140,6 +150,7 @@ router.get(
       ...investment,
       summary: computeHoldingSummary(investment.investmentTransactions, investment.currentValueOverride, latest),
       holding: holdingDto(latest, weightings.get(investment.id)),
+      sellable: sellabilityOf({ type: investment.type, txs: investment.investmentTransactions, valuation: latest }),
       marketOpen: marketOpenOf(investment),
       valuations: investment.valuations.map((v) => ({ id: v.id, asAt: v.asAt.toISOString(), units: v.units, marketPrice: v.marketPrice, marketValue: v.marketValue, marketValueAud: v.marketValueAud, currency: v.currency, source: v.source })),
     });
@@ -218,6 +229,30 @@ router.delete(
   })
 );
 
+// --- Selling shares ----------------------------------------------------------------------------------------------
+// Preview: work out the proceeds, allocated cost base and capital gain/loss for a proposed sale without saving
+// anything. This is what the Sell form shows for review, so what the person confirms is what the server will record.
+router.post(
+  "/:id/sales/preview",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const householdId = householdOf(req);
+    const input = parseBody(shareSaleSchema, req.body);
+    res.json(await previewShareSale(householdId, req.params.id as string, input));
+  })
+);
+
+// Record a confirmed sale (see services/shareSales.ts). Repeating a request with the same clientRequestId records the
+// sale once: the original is returned again (200) instead of creating a second one (201).
+router.post(
+  "/:id/sales",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const householdId = householdOf(req);
+    const input = parseBody(shareSaleRecordSchema, req.body);
+    const result = await recordShareSale(householdId, req.params.id as string, input);
+    res.status(result.duplicate ? 200 : 201).json(result);
+  })
+);
+
 router.post(
   "/:id/transactions",
   asyncHandler(async (req: AuthedRequest, res) => {
@@ -240,6 +275,9 @@ router.delete(
       where: { id: req.params.txId, investment: { householdId } },
     });
     if (!tx) throw new FriendlyError("We couldn't find this transaction.", 404);
+    // A sale recorded with the Sell action is a permanent record: deleting it would quietly rewrite realised gains and
+    // leave the holding's units out of step. (Older SELL rows entered by hand can still be removed as before.)
+    if (hasSaleSnapshot(tx)) throw new FriendlyError("A recorded share sale can't be deleted, because that would change your realised gains history.", 409);
     await prisma.investmentTransaction.delete({ where: { id: tx.id } });
     res.json({ message: "Transaction removed." });
   })

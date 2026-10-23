@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { CapitalGainDisposal } from "../api/types";
 import { Card, EmptyState, SectionHeading } from "../components/ui";
 import { FinancialYearSwitcher, labelFromId } from "../components/FinancialYearSwitcher";
-import { formatCurrency, formatCurrencySigned, formatDate } from "../lib/format";
+import { formatCurrency, formatCurrencySigned, formatDate, formatDateTime, formatMoney } from "../lib/format";
 
 /**
  * "View realised transactions" for Shares, ETFs & other investments.
@@ -76,7 +76,7 @@ export default function RealisedTransactionsPage() {
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <Card>
-              <p className="text-sm text-[var(--color-ink-soft)]">Total sale proceeds</p>
+              <p className="text-sm text-[var(--color-ink-soft)]">Total net sale proceeds</p>
               <p className="font-display text-xl font-semibold mt-1">{formatCurrency(totalProceeds)}</p>
             </Card>
             <Card>
@@ -98,14 +98,17 @@ export default function RealisedTransactionsPage() {
           </div>
 
           <Card className="p-0 overflow-x-auto">
-            <table className="w-full text-sm min-w-[56rem]">
+            <table className="w-full text-sm min-w-[72rem]">
               <thead className="text-left text-xs text-[var(--color-ink-soft)] bg-[var(--color-paper-dim)]">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Security</th>
                   <th className="px-4 py-2.5 font-medium whitespace-nowrap">Acquisition date</th>
                   <th className="px-4 py-2.5 font-medium whitespace-nowrap">Date sold</th>
                   <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Units</th>
-                  <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Sale proceeds</th>
+                  <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Sale price</th>
+                  <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Gross proceeds</th>
+                  <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Fees</th>
+                  <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Net proceeds</th>
                   <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Cost base</th>
                   <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Realised profit/loss</th>
                 </tr>
@@ -120,15 +123,21 @@ export default function RealisedTransactionsPage() {
                           {d.investmentName} {d.ticker ? `(${d.ticker})` : ""}
                         </Link>
                         <p className="text-xs text-[var(--color-ink-soft)]">
-                          {d.source === "manual" ? "Manually recorded" : "From buy/sell history"}
+                          {d.source === "manual" ? "Manually recorded" : d.costMethod ? "Recorded sale · average cost" : "From buy/sell history"}
                           {d.holdingPeriodDays !== null ? ` · Held ${d.holdingPeriodDays} days` : ""}
                         </p>
                         {d.notes && <p className="text-xs text-[var(--color-ink-soft)] mt-0.5">{d.notes}</p>}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">{d.acquisitionDate ? formatDate(d.acquisitionDate) : "—"}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{formatDate(d.saleDate)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {formatDate(d.saleDate)}
+                        {d.recordedAt && <p className="text-[11px] text-[var(--color-ink-soft)]">Recorded {formatDateTime(d.recordedAt)}</p>}
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums">{d.quantity}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(d.proceeds)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(d.salePrice)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(d.grossProceeds)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{d.saleCosts > 0 ? formatMoney(d.saleCosts) : "—"}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(d.proceeds)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(d.costBase)}</td>
                       <td className="px-4 py-3 text-right tabular-nums font-medium">
                         <span className={isProfit ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}>

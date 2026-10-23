@@ -4,6 +4,7 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { getFinancialYearByStartYear, parseFinancialYearId, getCurrentFinancialYear } from "../lib/financialYear";
 import * as calc from "../services/calculations";
+import { replayLedger, type LedgerTx } from "../services/holdings";
 
 const router = Router();
 router.use(requireAuth);
@@ -18,7 +19,7 @@ function resolveFy(req: AuthedRequest) {
   return fyParam ? getFinancialYearByStartYear(parseFinancialYearId(fyParam)) : getCurrentFinancialYear();
 }
 
-type InvTx = { type: string; quantity: number; pricePerUnit: number; brokerage: number; date: Date };
+type InvTx = LedgerTx;
 
 function toCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "";
@@ -96,21 +97,11 @@ router.get(
       include: { investmentTransactions: true, dividends: { where: { financialYear: fy.id } } },
     });
     const rows = investments.map((inv: { name: string; ticker: string | null; investmentTransactions: InvTx[]; currentValueOverride: number | null; dividends: { status: string; netAmount: number }[] }) => {
-      let qty = 0;
-      let costBase = 0;
-      let realised = 0;
-      for (const tx of [...inv.investmentTransactions].sort((a, b) => a.date.getTime() - b.date.getTime())) {
-        if (tx.type === "BUY") {
-          qty += tx.quantity;
-          costBase += tx.quantity * tx.pricePerUnit + tx.brokerage;
-        } else {
-          const avgCost = qty > 0 ? costBase / qty : 0;
-          const costOfSold = avgCost * tx.quantity;
-          realised += tx.quantity * tx.pricePerUnit - tx.brokerage - costOfSold;
-          qty -= tx.quantity;
-          costBase -= costOfSold;
-        }
-      }
+      // The shared average-cost replay (services/holdings.ts) — same figures as the Shares page and Capital Gains report.
+      const replay = replayLedger(inv.investmentTransactions);
+      const qty = replay.quantity;
+      const costBase = replay.costBase;
+      const realised = replay.sales.reduce((sum, sale) => sum + sale.gainLoss, 0);
       const lastPrice = [...inv.investmentTransactions].sort((a, b) => b.date.getTime() - a.date.getTime())[0]?.pricePerUnit ?? 0;
       const currentValue = inv.currentValueOverride ?? qty * lastPrice;
       const dividendIncomeFy = inv.dividends.filter((d) => d.status === "RECEIVED").reduce((s: number, d) => s + d.netAmount, 0);

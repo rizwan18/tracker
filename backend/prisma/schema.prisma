@@ -347,7 +347,7 @@ model InvestmentValuation {
   marketValue    Float      // in `currency`
   marketValueAud Float      // in Australian dollars
   currency       String     @default("AUD")
-  source         String     @default("MANUAL") // STAKE | MANUAL
+  source         String     @default("MANUAL") // STAKE | MANUAL | SALE (units reduced by a recorded share sale)
   createdAt      DateTime   @default(now())
 
   @@unique([investmentId, asAt])
@@ -362,11 +362,30 @@ model InvestmentTransaction {
   date         DateTime
   quantity     Float
   pricePerUnit Float
-  brokerage    Float    @default(0)
+  brokerage    Float    @default(0) // BUY: added to cost. SELL: selling fees, deducted from proceeds.
+
+  // --- Sale snapshot (SELL rows recorded with the "Sell" action only) -----------------------------------
+  // Frozen at the moment the sale is confirmed, in whole cents of the holding's currency, so a recorded
+  // sale never changes if a purchase is later edited or a market price moves. All null on BUY rows and on
+  // SELL rows entered the older way — those are still worked out on the fly (see services/holdings.ts).
+  /// quantity × price per unit, rounded half-up to the cent.
+  grossProceedsCents Int?
+  /// gross proceeds − selling fees.
+  netProceedsCents   Int?
+  /// Cost base allocated to the units sold (average-cost method).
+  costBaseCents      Int?
+  /// net proceeds − allocated cost base: positive = capital gain, negative = capital loss.
+  gainLossCents      Int?
+  /// How costBaseCents was allocated, e.g. "AVERAGE_COST".
+  costMethod         String?
+  /// Idempotency key sent by the client, so a repeated submit of the same sale is recorded only once.
+  clientRequestId    String?
+
   notes        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  @@unique([investmentId, clientRequestId])
   @@index([investmentId])
   @@index([date])
 }
