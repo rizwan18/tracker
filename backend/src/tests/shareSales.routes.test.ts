@@ -1,7 +1,8 @@
 /**
  * Selling shares end to end: the real Express routes and services against an in-memory stand-in for the database.
  *
- * The stand-in models the two database behaviours the sale code relies on:
+ * The stand-in models the database behaviours the sale code relies on (and deliberately has NO unique constraint on the
+ * request id, matching the schema — duplicate protection must come from the lock and the check):
  *  - $transaction rolls everything back if the callback throws;
  *  - an UPDATE takes a row lock that is held until the transaction ends (as in PostgreSQL), so two transactions that
  *    both update the same investment run one after the other.
@@ -49,13 +50,8 @@ const h = vi.hoisted(() => {
       investmentTransaction: {
         findMany: async ({ where }: Row) => state.txs.filter((t) => matches(t, where)).map(clone),
         findFirst: async ({ where }: Row) => state.txs.find((t) => matches(t, where)) ?? null,
-        findUnique: async ({ where }: Row) => {
-          const k = where.investmentId_clientRequestId;
-          return state.txs.find((t) => t.investmentId === k.investmentId && t.clientRequestId === k.clientRequestId) ?? null;
-        },
         create: async ({ data }: Row) => {
           onWrite();
-          if (data.clientRequestId && state.txs.some((t) => t.investmentId === data.investmentId && t.clientRequestId === data.clientRequestId)) throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
           const row = { id: id("tx"), createdAt: new Date(1_700_000_000_000 + state.seq * 1000), updatedAt: new Date(), notes: null, grossProceedsCents: null, netProceedsCents: null, costBaseCents: null, gainLossCents: null, costMethod: null, clientRequestId: null, ...data };
           state.txs.push(row);
           return clone(row);

@@ -378,14 +378,16 @@ model InvestmentTransaction {
   gainLossCents      Int?
   /// How costBaseCents was allocated, e.g. "AVERAGE_COST".
   costMethod         String?
-  /// Idempotency key sent by the client, so a repeated submit of the same sale is recorded only once.
+  /// Idempotency key sent by the client, so a repeated submit of the same sale is recorded only once. Not a unique
+  /// constraint on purpose (prisma db push refuses new unique constraints without --accept-data-loss): uniqueness is
+  /// enforced inside the sale transaction, under a row lock on the investment — see services/shareSales.ts.
   clientRequestId    String?
 
   notes        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@unique([investmentId, clientRequestId])
+  @@index([investmentId, clientRequestId])
   @@index([investmentId])
   @@index([date])
 }

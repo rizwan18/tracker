@@ -249,8 +249,6 @@ export interface RecordedSale {
   closed: boolean;
 }
 
-const isUniqueViolation = (e: unknown): boolean => typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002";
-
 function sameRequest(existing: SaleRow, input: ShareSaleRecordInput): boolean {
   return (
     existing.quantity === input.quantity &&
@@ -261,7 +259,7 @@ function sameRequest(existing: SaleRow, input: ShareSaleRecordInput): boolean {
 }
 
 async function existingByRequest(db: Db, investmentId: string, clientRequestId: string) {
-  return db.investmentTransaction.findUnique({ where: { investmentId_clientRequestId: { investmentId, clientRequestId } } });
+  return db.investmentTransaction.findFirst({ where: { investmentId, clientRequestId } });
 }
 
 /**
@@ -271,61 +269,53 @@ async function existingByRequest(db: Db, investmentId: string, clientRequestId: 
  * Two safeguards against bad data from concurrent or repeated requests:
  *  - The investment row is updated first, which takes a row lock held until the transaction ends: two sales of the same
  *    holding are therefore processed one after the other, each seeing the other's result (no overselling).
- *  - `clientRequestId` is unique per holding: submitting the same sale twice records it once and returns the original.
+ *  - `clientRequestId` identifies one sale attempt: the check for it runs under that same lock, so submitting the same sale
+ *    twice (even simultaneously) records it once and returns the original.
  */
 export async function recordShareSale(householdId: string, investmentId: string, input: ShareSaleRecordInput, now: Date = new Date()): Promise<RecordedSale> {
-  try {
-    return await prisma.$transaction(
-      async (tx) => {
-        const locked = await tx.investment.updateMany({ where: { id: investmentId, householdId }, data: { updatedAt: now } });
-        if (locked.count === 0) throw new FriendlyError("We couldn't find this investment.", 404);
+  return prisma.$transaction(
+    async (tx) => {
+      const locked = await tx.investment.updateMany({ where: { id: investmentId, householdId }, data: { updatedAt: now } });
+      if (locked.count === 0) throw new FriendlyError("We couldn't find this investment.", 404);
 
-        const already = await existingByRequest(tx, investmentId, input.clientRequestId);
-        if (already) return duplicateOf(tx, householdId, already, input);
+      const already = await existingByRequest(tx, investmentId, input.clientRequestId);
+      if (already) return duplicateOf(tx, householdId, already, input);
 
-        const { holding, transactions, latestValuation } = await loadState(tx, householdId, investmentId);
-        const plan = planShareSale({ holding, transactions, latestValuation, input, now });
-        const f = plan.figures;
+      const { holding, transactions, latestValuation } = await loadState(tx, householdId, investmentId);
+      const plan = planShareSale({ holding, transactions, latestValuation, input, now });
+      const f = plan.figures;
 
-        const created = await tx.investmentTransaction.create({
-          data: {
-            investmentId,
-            type: "SELL",
-            date: plan.saleDate,
-            quantity: input.quantity,
-            pricePerUnit: input.pricePerShare,
-            brokerage: input.fees,
-            grossProceedsCents: f.grossProceedsCents,
-            netProceedsCents: f.netProceedsCents,
-            costBaseCents: f.costBaseCents,
-            gainLossCents: f.gainLossCents,
-            costMethod: f.costMethod,
-            clientRequestId: input.clientRequestId,
-          },
+      const created = await tx.investmentTransaction.create({
+        data: {
+          investmentId,
+          type: "SELL",
+          date: plan.saleDate,
+          quantity: input.quantity,
+          pricePerUnit: input.pricePerShare,
+          brokerage: input.fees,
+          grossProceedsCents: f.grossProceedsCents,
+          netProceedsCents: f.netProceedsCents,
+          costBaseCents: f.costBaseCents,
+          gainLossCents: f.gainLossCents,
+          costMethod: f.costMethod,
+          clientRequestId: input.clientRequestId,
+        },
+      });
+
+      const v = plan.valuation;
+      if (v) {
+        const fields = { units: v.units, marketPrice: v.marketPrice, marketValue: v.marketValue, marketValueAud: v.marketValueAud, currency: v.currency, source: v.source };
+        await tx.investmentValuation.upsert({
+          where: { investmentId_asAt: { investmentId, asAt: v.asAt } },
+          create: { investmentId, asAt: v.asAt, ...fields },
+          update: fields,
         });
+      }
 
-        const v = plan.valuation;
-        if (v) {
-          const fields = { units: v.units, marketPrice: v.marketPrice, marketValue: v.marketValue, marketValueAud: v.marketValueAud, currency: v.currency, source: v.source };
-          await tx.investmentValuation.upsert({
-            where: { investmentId_asAt: { investmentId, asAt: v.asAt } },
-            create: { investmentId, asAt: v.asAt, ...fields },
-            update: fields,
-          });
-        }
-
-        return { duplicate: false, sale: saleDtoOf(created), remainingQuantity: f.remainingQuantity, closed: f.closesHolding };
-      },
-      { maxWait: 5_000, timeout: 20_000 }
+      return { duplicate: false, sale: saleDtoOf(created), remainingQuantity: f.remainingQuantity, closed: f.closesHolding };
+    },
+    { maxWait: 5_000, timeout: 20_000 }
     );
-  } catch (e) {
-    // Two identical requests raced past the check above: the database's unique key let one through. Return that one.
-    if (isUniqueViolation(e)) {
-      const existing = await existingByRequest(prisma, investmentId, input.clientRequestId);
-      if (existing) return duplicateOf(prisma, householdId, existing, input);
-    }
-    throw e;
-  }
 }
 
 /** The answer to a repeated request: the sale that was already recorded, plus what the holding looks like now. */
