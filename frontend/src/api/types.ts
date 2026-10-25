@@ -250,6 +250,8 @@ export interface Investment {
     unrealisedGainLoss: number;
     realisedGain: number;
     realisedLoss: number;
+    /** Cost base of the units already sold — the denominator for a realised % return. */
+    realisedCostBase?: number;
     /** Sold down to nothing: kept, with its history, but no longer an active holding. */
     closed?: boolean;
   };

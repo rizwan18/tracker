@@ -77,3 +77,25 @@ describe("investmentInitialTransactionSchema — the initial buy recorded from \
     expect(() => investmentInitialTransactionSchema.parse({ date: "2026-01-01", quantity: 100, pricePerUnit: 0 })).toThrow();
   });
 });
+
+describe("computeHoldingSummary — realisedCostBase (denominator for the realised % return)", () => {
+  it("is zero when nothing has been sold", () => {
+    expect(computeHoldingSummary([buy(100, 10, 20)], null, null).realisedCostBase).toBe(0);
+  });
+
+  it("is the average cost of the units sold, never the proceeds", () => {
+    // Bought 100 @ $10 + $20 brokerage = $1,020 → $10.20/unit. Sell 40 @ $15: cost of sold = 40 × 10.20 = $408.
+    const summary = computeHoldingSummary([buy(100, 10, 20), sell(40, 15, 0)], null, null);
+    expect(summary.realisedCostBase).toBeCloseTo(408, 5);
+    expect(summary.realisedGain).toBeCloseTo(600 - 408, 5);
+    // The 60 units left keep the same per-unit cost.
+    expect(summary.costBase).toBeCloseTo(612, 5);
+  });
+
+  it("accumulates across several sales, and gain + cost of sold reconcile to proceeds", () => {
+    const summary = computeHoldingSummary([buy(100, 10), sell(50, 12, 5, "2026-03-01"), sell(50, 8, 5, "2026-04-01")], null, null);
+    // Proceeds: (600 − 5) + (400 − 5) = 990; cost of sold = 1,000 in total; net = −10.
+    expect(summary.realisedCostBase).toBeCloseTo(1000, 5);
+    expect(summary.realisedGain - summary.realisedLoss).toBeCloseTo(990 - 1000, 5);
+  });
+});

@@ -82,3 +82,9 @@ h1, h2, h3, .font-display {
 .easy-view button, .easy-view a, .easy-view input, .easy-view select {
   min-height: 3rem;
 }
+
+/* Controls sitting on the solid blue "Check Security Price" panel: the default sky-coloured focus ring is
+   too faint on blue, so use white there. (Unlayered like the rule above, with higher specificity.) */
+.on-brand-blue :focus-visible {
+  outline-color: #ffffff;
+}

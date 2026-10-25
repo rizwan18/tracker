@@ -1,12 +1,15 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import type { Investment } from "../api/types";
-import { Button, Card, EmptyState, SectionHeading, HelpText } from "../components/ui";
+import { Button, Card, EmptyState, SectionHeading } from "../components/ui";
 import { Modal } from "../components/Modal";
 import { InvestmentForm } from "../components/InvestmentForm";
 import { HoldingsTable } from "../components/HoldingsTable";
 import { SellSharesDialog } from "../components/SellSharesDialog";
+import { PnlSummaryCards } from "../components/PnlSummaryCards";
+import { SecurityPriceCheckPanel, type PriceCheckState } from "../components/SecurityPriceCheckPanel";
+import { resolveMarketPosition, summarisePnl } from "../lib/pnl";
 import { isStock, marketOf } from "../lib/holdings";
 import { formatCurrency, formatCurrencySigned } from "../lib/format";
 
@@ -30,6 +33,8 @@ export default function InvestmentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [sellTarget, setSellTarget] = useState<Investment | null>(null);
 
+  const fetchInvestments = useCallback(() => api.get<Investment[]>("/investments"), []);
+
   const load = useCallback(() => {
     setLoading(true);
     api
@@ -40,30 +45,61 @@ export default function InvestmentsPage() {
 
   useEffect(load, [load]);
 
-  // Refresh persisted market prices in the background, once per page visit. The table above
-  // has already rendered from the database by the time this resolves — the backend itself
-  // decides which holdings are actually due (at most once a minute per holding while its
-  // exchange is open, once every 24 hours while it's closed — see refresh-market-prices), so this is safe
-  // to fire on every visit without creating uncontrolled provider traffic. Reload afterwards
-  // so the table picks up whatever did or didn't change.
+  const [priceCheck, setPriceCheck] = useState<PriceCheckState>({ status: "idle" });
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshInFlight = useRef(false);
+  const investmentsRef = useRef<Investment[]>([]);
   useEffect(() => {
-    api
-      .post("/investments/refresh-market-prices")
-      .catch(() => {
-        /* a refresh failure never blocks the page — the table keeps showing the last saved prices */
-      })
-      .finally(load);
-    // Intentionally run once per mount only, not on every `investments`/`load` identity change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    investmentsRef.current = investments;
+  }, [investments]);
+
+  // Refresh persisted market prices (the existing refresh-market-prices endpoint). The backend decides which holdings
+  // are actually due — at most once a minute per holding while its exchange is open, once every 24 hours while it's
+  // closed — so this is safe to fire on every visit and on every click without creating uncontrolled provider traffic.
+  // One shared in-flight guard means the automatic refresh on page load and a click on "Refresh my prices" can never
+  // overlap, and repeated clicks while one is running do nothing. The automatic run stays silent (a failure never blocks
+  // the page); only a run the person asked for reports its outcome.
+  const refreshPrices = useCallback(
+    async (userInitiated: boolean) => {
+      if (refreshInFlight.current) return;
+      refreshInFlight.current = true;
+      setRefreshing(true);
+      if (userInitiated) setPriceCheck({ status: "running" });
+      const before = new Map(investmentsRef.current.map((i) => [i.id, i.marketPriceUpdatedAt]));
+      try {
+        await api.post("/investments/refresh-market-prices");
+      } catch (err) {
+        if (userInitiated) setPriceCheck({ status: "error", message: err instanceof ApiError ? err.message : "We couldn’t reach the price service just now." });
+        refreshInFlight.current = false;
+        setRefreshing(false);
+        return;
+      }
+      try {
+        const fresh = await fetchInvestments();
+        setInvestments(fresh);
+        if (userInitiated) {
+          const priced = fresh.filter((i) => isStock(i) && !i.summary.closed && i.ticker);
+          const updated = priced.filter((i) => i.marketPriceUpdatedAt && i.marketPriceUpdatedAt !== (before.get(i.id) ?? null)).length;
+          setPriceCheck(updated > 0 ? { status: "updated", count: updated } : { status: "unchanged", marketsClosed: priced.length > 0 && priced.every((i) => i.marketOpen === false) });
+        }
+      } catch (err) {
+        if (userInitiated) setPriceCheck({ status: "error", message: err instanceof ApiError ? err.message : "We couldn’t load the latest prices." });
+      } finally {
+        refreshInFlight.current = false;
+        setRefreshing(false);
+      }
+    },
+    [fetchInvestments]
+  );
+
+  useEffect(() => {
+    // Once per mount, after the table has already rendered from the database (deferred a tick; also keeps a dev-mode double mount to one request).
+    const t = setTimeout(() => void refreshPrices(false), 0);
+    return () => clearTimeout(t);
+  }, [refreshPrices]);
 
   const totalValue = investments.reduce((s, i) => s + i.summary.currentValue, 0);
-  // Only holdings with a buy/sell history have a cost to compare against.
-  const withCost = investments.filter((i) => i.summary.costBaseKnown !== false);
-  const totalUnrealised = withCost.reduce((s, i) => s + i.summary.unrealisedGainLoss, 0);
-  // Realised (from shares already sold) is kept apart from the unrealised figure above, which only covers what is still held.
-  const hasSales = investments.some((i) => i.investmentTransactions.some((t) => t.type === "SELL"));
-  const totalRealised = investments.reduce((s, i) => s + i.summary.realisedGain - i.summary.realisedLoss, 0);
+  const pnl = summarisePnl(investments);
   const allStocks = investments.filter(isStock);
   // A holding sold down to nothing is closed: kept, with its history, but listed separately from what you hold.
   const stocks = allStocks.filter((i) => !i.summary.closed);
@@ -74,6 +110,10 @@ export default function InvestmentsPage() {
   // CryptoManagedFundsPage.tsx) — everything else non-stock still lands here.
   const others = investments.filter((i) => !isStock(i) && !["CRYPTO", "MANAGED_FUND", "TERM_DEPOSIT"].includes(i.type));
   const latestStatement = stocks.map((i) => i.holding?.asAt).filter(Boolean).sort().at(-1);
+  // Price-check panel facts, taken from the holdings still held (a fully sold holding no longer needs a price).
+  const latestPriceAt = stocks.map((i) => i.marketPriceUpdatedAt).filter((t): t is string => !!t).sort().at(-1) ?? null;
+  const unpricedCount = stocks.filter((i) => i.ticker && resolveMarketPosition(i).priceBasis === "none").length;
+  const noTickerCount = stocks.filter((i) => !i.ticker).length;
 
   return (
     <div className="space-y-6">
@@ -82,14 +122,8 @@ export default function InvestmentsPage() {
         subtitle="Track holdings, dividends, and gains — all figures are estimates based on what you enter."
         action={
           <div className="flex flex-wrap gap-2">
-            <Link to="/investments/realised">
-              <Button variant="secondary">View Trades</Button>
-            </Link>
             <Link to="/import-export?section=investments">
               <Button variant="secondary">Import/Export</Button>
-            </Link>
-            <Link to="/investments/price-lookup">
-              <Button variant="secondary">Check Security Price</Button>
             </Link>
             <Button onClick={() => setShowForm(true)}>+ Add investment</Button>
           </div>
@@ -97,38 +131,23 @@ export default function InvestmentsPage() {
       />
 
       {!loading && investments.length > 0 && (
-        <div className={`grid grid-cols-2 gap-3 ${hasSales ? "sm:grid-cols-3" : ""}`}>
-          <Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <Card className="sm:col-span-2 lg:col-span-1">
             <p className="text-sm text-[var(--color-ink-soft)]">Total portfolio value</p>
             <p className="font-display text-2xl font-semibold mt-1">{formatCurrency(totalValue)}</p>
           </Card>
-          <Card>
-            <p className="text-sm text-[var(--color-ink-soft)]">
-              <HelpText term="Unrealised Gain/Loss">
-                <span>Unrealised gain/loss</span>
-              </HelpText>
-            </p>
-            {withCost.length === 0 ? (
-              <p className="font-display text-2xl font-semibold mt-1 text-[var(--color-ink-soft)]" title="Add your buy and sell history to see gains and losses.">
-                —
-              </p>
-            ) : (
-              <p className={`font-display text-2xl font-semibold mt-1 ${totalUnrealised >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}`}>{formatCurrencySigned(totalUnrealised)}</p>
-            )}
-          </Card>
-          {hasSales && (
-            <Card>
-              <p className="text-sm text-[var(--color-ink-soft)]">
-                <HelpText term="Realised Gain/Loss">
-                  <span>Realised gain/loss</span>
-                </HelpText>
-              </p>
-              <p className={`font-display text-2xl font-semibold mt-1 ${totalRealised >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}`}>{formatCurrencySigned(totalRealised)}</p>
-              <p className="text-xs text-[var(--color-ink-soft)] mt-1">From shares you've sold, all time</p>
-            </Card>
-          )}
+          <PnlSummaryCards pnl={pnl} />
         </div>
       )}
+
+      <SecurityPriceCheckPanel
+        state={priceCheck}
+        busy={refreshing}
+        onRefresh={() => void refreshPrices(true)}
+        latestPriceAt={latestPriceAt}
+        unpricedCount={unpricedCount}
+        noTickerCount={noTickerCount}
+      />
 
       {loading ? (
         <p className="text-[var(--color-ink-soft)]">Loading…</p>

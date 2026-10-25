@@ -3,6 +3,7 @@ import type { Investment } from "../api/types";
 import { Button, Card } from "./ui";
 import { MARKET_TITLES, formatPercent, formatPrice, formatUnits, formatUsd } from "../lib/holdings";
 import { formatDateUtc, formatDateTime, formatMoney } from "../lib/format";
+import { resolveMarketPosition } from "../lib/pnl";
 
 const fmtValue = (n: number, isUs: boolean) => (isUs ? formatUsd(n) : formatMoney(n));
 // Same +/- convention as the Realised Transactions page, just usable in either currency.
@@ -37,18 +38,14 @@ export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "W
   const currency = isUs ? "USD" : "AUD";
   const rows = holdings.map((inv) => {
     const h = inv.holding ?? null;
-    const units = h ? h.units : inv.summary.quantity > 0 ? inv.summary.quantity : null;
+    // Units, market price (live, else last recorded) and market value come from the shared resolver so the
+    // dashboard P&L cards use exactly the same figures as this table.
+    const { units, marketPrice, marketPriceAsAt, priceBasis, marketValue } = resolveMarketPosition(inv);
+    const marketPriceIsLive = priceBasis === "live";
     const costBaseKnown = inv.summary.costBaseKnown !== false;
     // Wall St values are US$ only; ASX values are A$ (falls back to the summary value for holdings with no valuation).
     const value = costBaseKnown ? inv.summary.costBase : h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null;
     const price = costBaseKnown && units ? value! / units : h ? h.marketPrice : null;
-    // Prefer the persisted live price (Investment.marketPrice, from a successful refresh).
-    // Before that's ever happened for a holding, fall back to its last recorded valuation price rather than a blank
-    // dash, so Market Value/Unrealised Gain/Loss still show something meaningful.
-    const hasLivePrice = inv.marketPrice !== null && inv.marketPrice !== undefined;
-    const marketPrice = hasLivePrice ? inv.marketPrice! : h ? h.marketPrice : null;
-    const marketPriceAsAt = hasLivePrice ? inv.marketPriceUpdatedAt : h ? h.asAt : null;
-    const marketValue = marketPrice !== null && units !== null ? marketPrice * units : null;
     const unrealisedGainLoss = marketValue !== null && value !== null ? marketValue - value : null;
     return {
       inv,
@@ -58,7 +55,7 @@ export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "W
       value,
       marketPrice,
       marketPriceAsAt,
-      marketPriceIsLive: hasLivePrice,
+      marketPriceIsLive,
       marketValue,
       unrealisedGainLoss,
     };

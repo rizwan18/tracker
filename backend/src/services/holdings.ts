@@ -204,9 +204,13 @@ export function computeHoldingSummary(
   const replay = replayLedger(txs);
   let realisedGain = 0;
   let realisedLoss = 0;
+  // Cost base of the units already sold (the same figure each sale's gain/loss was measured against) —
+  // the denominator for a realised percentage return. Not part of the gain/loss itself.
+  let realisedCostBase = 0;
   for (const sale of replay.sales) {
     if (sale.gainLoss >= 0) realisedGain += sale.gainLoss;
     else realisedLoss += -sale.gainLoss;
+    realisedCostBase += sale.costOfSold;
   }
 
   const sorted = [...txs].sort(compareLedger);
@@ -219,5 +223,5 @@ export function computeHoldingSummary(
   const costBaseKnown = txs.length > 0;
   const unrealisedGainLoss = costBaseKnown ? currentValue - replay.costBase : 0;
 
-  return { quantity: unitsHeld, costBase: replay.costBase, costBaseKnown, currentValue, unrealisedGainLoss, realisedGain, realisedLoss, closed };
+  return { quantity: unitsHeld, costBase: replay.costBase, costBaseKnown, currentValue, unrealisedGainLoss, realisedGain, realisedLoss, realisedCostBase, closed };
 }

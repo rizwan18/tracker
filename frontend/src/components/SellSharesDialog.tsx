@@ -229,7 +229,7 @@ export function SellSharesDialog({ investment, onCancel, onFinished }: { investm
             {result.sale.outcome !== "BREAK_EVEN" && <span className={`font-semibold tabular-nums ${outcomeColour(result.sale.outcome)}`}>: {formatCentsSigned(result.sale.gainLossCents, currency)}</span>}
           </p>
           <p className="text-sm text-[var(--color-ink-soft)]">
-            {result.closed ? "The holding is now closed. Its history stays in your trades." : `${formatUnits(result.remainingQuantity)} shares remain.`} You can see this sale under Shares → View Trades.
+            {result.closed ? "The holding is now closed. Its history stays in your trades." : `${formatUnits(result.remainingQuantity)} shares remain.`} It is counted in Realised P&L on the Shares and ETFs screen, and listed under “View sales by financial year”.
           </p>
           <div className="flex justify-end pt-2">
             <Button onClick={onFinished}>Done</Button>
