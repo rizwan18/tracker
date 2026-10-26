@@ -4,7 +4,8 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { z } from "zod";
 import { investmentSchema, investmentTransactionSchema, investmentValuationSchema, investmentInitialTransactionSchema, shareSaleSchema, shareSaleRecordSchema } from "../lib/validation";
-import { computeWeightings, computeHoldingSummary, currentValueOf, hasSaleSnapshot, sellabilityOf, valueHolding, type LatestValuation } from "../services/holdings";
+import { computeWeightings, computeHoldingSummary, currentValueOf, hasSaleSnapshot, addingLeavesShortfall, removingLeavesShortfall, sellabilityOf, transactionRowsOf, valueHolding, type LatestValuation } from "../services/holdings";
+import { resolveBrokerAccountId } from "../services/brokerAccounts";
 import { previewShareSale, recordShareSale } from "../services/shareSales";
 import { refreshMarketPrices } from "../services/marketPriceRefresh";
 import { isMarketOpen, toMarket } from "../lib/marketHours";
@@ -74,6 +75,7 @@ router.get(
       return {
         ...rest,
         summary: computeHoldingSummary(inv.investmentTransactions, inv.currentValueOverride, valuations[0] ?? null),
+        transactionRows: transactionRowsOf(inv.investmentTransactions),
         holding: holdingDto(valuations[0], weightings.get(inv.id)),
         sellable: sellabilityOf({ type: inv.type, txs: inv.investmentTransactions, valuation: valuations[0] ?? null }),
         totalDividends: inv.dividends.filter((d) => d.status === "RECEIVED").reduce((s: number, d) => s + d.netAmount, 0),
@@ -123,8 +125,9 @@ router.post(
       // fees are incorporated into cost base via the app's existing calculation (computeHoldingSummary),
       // with no separate/new methodology.
       if (initialTransaction) {
+        const brokerAccountId = await resolveBrokerAccountId(tx, householdId, initialTransaction.brokerAccountId);
         await tx.investmentTransaction.create({
-          data: { investmentId: created.id, type: "BUY", date: initialTransaction.date, quantity: initialTransaction.quantity, pricePerUnit: initialTransaction.pricePerUnit, brokerage: initialTransaction.brokerage ?? 0 },
+          data: { investmentId: created.id, type: "BUY", date: initialTransaction.date, quantity: initialTransaction.quantity, pricePerUnit: initialTransaction.pricePerUnit, brokerage: initialTransaction.brokerage ?? 0, brokerAccountId },
         });
       }
       return created;
@@ -149,6 +152,7 @@ router.get(
     res.json({
       ...investment,
       summary: computeHoldingSummary(investment.investmentTransactions, investment.currentValueOverride, latest),
+      transactionRows: transactionRowsOf(investment.investmentTransactions),
       holding: holdingDto(latest, weightings.get(investment.id)),
       sellable: sellabilityOf({ type: investment.type, txs: investment.investmentTransactions, valuation: latest }),
       marketOpen: marketOpenOf(investment),
@@ -176,7 +180,8 @@ router.put(
     const householdId = householdOf(req);
     const investment = await prisma.investment.findFirst({ where: { id: req.params.id, householdId } });
     if (!investment) throw new FriendlyError("We couldn't find this investment.", 404);
-    const { brokerage, ...data } = investmentValuationSchema.parse(req.body);
+    const { brokerage, brokerAccountId: chosenAccountId, ...data } = investmentValuationSchema.parse(req.body);
+    const brokerAccountId = await resolveBrokerAccountId(prisma, householdId, chosenAccountId);
     const values = valueHolding(data.units, data.marketPrice, investment.currency, data.fxRate ?? null);
     const fields = { units: data.units, marketPrice: data.marketPrice, marketValue: values.marketValue, marketValueAud: values.marketValueAud, currency: investment.currency, source: "MANUAL" };
     const saved = await prisma.$transaction(async (tx) => {
@@ -194,11 +199,13 @@ router.put(
       // than guess which one to overwrite; use "Add a buy/sell transaction" for those instead.
       if (brokerage !== undefined && data.units > 0 && data.marketPrice > 0) {
         const existing = await tx.investmentTransaction.findMany({ where: { investmentId: investment.id }, orderBy: { date: "asc" } });
+        // Keep a previously chosen broker account unless a different one was picked now.
         const openingFields = { type: "BUY" as const, date: data.asAt, quantity: data.units, pricePerUnit: data.marketPrice, brokerage };
+        const only = existing.length === 1 ? existing[0] : undefined;
         if (existing.length === 0) {
-          await tx.investmentTransaction.create({ data: { investmentId: investment.id, ...openingFields } });
-        } else if (existing.length === 1 && existing[0].type === "BUY") {
-          await tx.investmentTransaction.update({ where: { id: existing[0].id }, data: openingFields });
+          await tx.investmentTransaction.create({ data: { investmentId: investment.id, ...openingFields, brokerAccountId } });
+        } else if (only && only.type === "BUY") {
+          await tx.investmentTransaction.update({ where: { id: only.id }, data: { ...openingFields, ...(brokerAccountId ? { brokerAccountId } : {}) } });
         }
       }
       return valuation;
@@ -259,9 +266,18 @@ router.post(
     const householdId = householdOf(req);
     const investment = await prisma.investment.findFirst({ where: { id: req.params.id, householdId } });
     if (!investment) throw new FriendlyError("We couldn't find this investment.", 404);
-    const data = investmentTransactionSchema.parse(req.body);
+    const { brokerAccountId: chosenAccountId, ...data } = investmentTransactionSchema.parse(req.body);
+    const brokerAccountId = await resolveBrokerAccountId(prisma, householdId, chosenAccountId);
+    // A sale of units that aren't held would leave a negative holding, so a hand-entered SELL is checked against the history first.
+    if (data.type === "SELL") {
+      const history = await prisma.investmentTransaction.findMany({ where: { investmentId: investment.id } });
+      const probe = { id: "~new", type: "SELL", date: data.date, quantity: data.quantity, pricePerUnit: data.pricePerUnit, brokerage: data.brokerage ?? 0, createdAt: new Date() };
+      if (addingLeavesShortfall(history, probe)) {
+        throw new FriendlyError("You can't sell more units than you held on that date. Check the date and the number of units.", 400);
+      }
+    }
     const tx = await prisma.investmentTransaction.create({
-      data: { investmentId: investment.id, ...data, brokerage: data.brokerage ?? 0 },
+      data: { investmentId: investment.id, ...data, brokerage: data.brokerage ?? 0, brokerAccountId },
     });
     res.status(201).json(tx);
   })
@@ -278,6 +294,11 @@ router.delete(
     // A sale recorded with the Sell action is a permanent record: deleting it would quietly rewrite realised gains and
     // leave the holding's units out of step. (Older SELL rows entered by hand can still be removed as before.)
     if (hasSaleSnapshot(tx)) throw new FriendlyError("A recorded share sale can't be deleted, because that would change your realised gains history.", 409);
+    // Removing a purchase that later sales rely on would leave a negative holding.
+    const history = await prisma.investmentTransaction.findMany({ where: { investmentId: tx.investmentId } });
+    if (removingLeavesShortfall(history, tx.id)) {
+      throw new FriendlyError("This purchase can't be removed because a later sale relies on those units. Remove or change that sale first.", 409);
+    }
     await prisma.investmentTransaction.delete({ where: { id: tx.id } });
     res.json({ message: "Transaction removed." });
   })

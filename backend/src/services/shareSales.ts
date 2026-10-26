@@ -22,6 +22,7 @@ import { STOCK_TYPES } from "../lib/constants";
 import { D, dec, MAX_CENTS, QTY_EPSILON, toCentsInt } from "../lib/decimal";
 import { COST_METHOD, computeSale, outcomeOf, type SaleFigures, type SaleOutcome } from "../lib/shareSale";
 import type { ShareSaleInput, ShareSaleRecordInput } from "../lib/validation";
+import { resolveBrokerAccountId } from "./brokerAccounts";
 import { dayKey, lowestRunningQuantity, replayLedger, sellabilityOf, valueHolding, type LedgerTx } from "./holdings";
 
 /** A sale dated up to a day ahead of the server clock is accepted: "today" for a user ahead of UTC (e.g. Melbourne) is already tomorrow in UTC. */
@@ -281,6 +282,7 @@ export async function recordShareSale(householdId: string, investmentId: string,
       const already = await existingByRequest(tx, investmentId, input.clientRequestId);
       if (already) return duplicateOf(tx, householdId, already, input);
 
+      const brokerAccountId = await resolveBrokerAccountId(tx, householdId, input.brokerAccountId);
       const { holding, transactions, latestValuation } = await loadState(tx, householdId, investmentId);
       const plan = planShareSale({ holding, transactions, latestValuation, input, now });
       const f = plan.figures;
@@ -299,6 +301,7 @@ export async function recordShareSale(householdId: string, investmentId: string,
           gainLossCents: f.gainLossCents,
           costMethod: f.costMethod,
           clientRequestId: input.clientRequestId,
+          brokerAccountId,
         },
       });
 

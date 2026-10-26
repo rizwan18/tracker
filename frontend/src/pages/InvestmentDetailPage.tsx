@@ -9,6 +9,9 @@ import { DividendForm } from "../components/DividendForm";
 import { HoldingValuationForm } from "../components/HoldingValuationForm";
 import { SellSharesDialog } from "../components/SellSharesDialog";
 import { LinkedTransactions } from "../components/LinkedTransactions";
+import { TypeBadge } from "../components/TransactionsTable";
+import { brokerLabel } from "../lib/brokers";
+import { useBrokerAccounts } from "../lib/useBrokerAccounts";
 import { useFinancialYear } from "../context/FinancialYearContext";
 import { formatCurrency, formatDate, formatDateUtc, formatMoney } from "../lib/format";
 import { OUTCOME_LABEL, formatCentsIn, formatCentsSigned, outcomeColour, outcomeOf } from "../lib/sale";
@@ -23,6 +26,7 @@ export default function InvestmentDetailPage() {
   const [showDividendForm, setShowDividendForm] = useState(false);
   const [showHoldingForm, setShowHoldingForm] = useState(false);
   const [showSell, setShowSell] = useState(false);
+  const { accounts } = useBrokerAccounts();
 
   const load = useCallback(() => {
     if (!id) return;
@@ -84,8 +88,8 @@ export default function InvestmentDetailPage() {
                     return (
                       <li key={tx.id} className="flex items-center justify-between gap-3 px-5 py-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${tx.type === "BUY" ? "bg-[var(--color-eucalyptus-tint)] text-[var(--color-eucalyptus-dark)]" : "bg-[var(--color-brick-tint)] text-[var(--color-brick)]"}`}>
-                            {tx.type === "BUY" ? "Buy" : "Sell"}
+                          <span className="shrink-0">
+                            <TypeBadge type={tx.type} />
                           </span>
                           <div className="min-w-0">
                             <p className="font-medium truncate">
@@ -95,6 +99,14 @@ export default function InvestmentDetailPage() {
                               {formatDate(tx.date)}
                               {tx.brokerage > 0 ? ` · ${tx.type === "SELL" ? "Fees" : "Brokerage"} ${formatCurrency(tx.brokerage)}` : ""}
                             </p>
+                            {tx.brokerAccountId && (
+                              <p className="text-xs text-[var(--color-ink-soft)]">
+                                {(() => {
+                                  const a = accounts.find((x) => x.id === tx.brokerAccountId);
+                                  return a ? brokerLabel(a) : "Broker account";
+                                })()}
+                              </p>
+                            )}
                             {recorded && (
                               <p className="text-xs mt-0.5 text-[var(--color-ink-soft)]">
                                 Net {formatCentsIn(tx.netProceedsCents!, cur)} · Cost base {formatCentsIn(tx.costBaseCents!, cur)} ·{" "}

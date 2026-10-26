@@ -81,13 +81,15 @@ describe("unrealised P&L", () => {
 
   it("prefers a live price over a recorded one", () => {
     const h = { asAt: "2026-06-30", units: 100, marketPrice: 11 } as Investment["holding"];
-    const pos = resolveMarketPosition(stock({ holding: h, marketPrice: 13, marketPriceUpdatedAt: "2026-10-26T01:00:00Z" }));
+    const pos = resolveMarketPosition(stock({ holding: h, marketPrice: 13, marketPriceUpdatedAt: "2026-10-26T01:00:00Z", summary: { quantity: 100, costBase: 1000 } }));
     expect(pos.priceBasis).toBe("live");
     expect(pos.marketValue).toBe(1300);
   });
 
   it("leaves out a holding with no buy history (no cost to compare against)", () => {
-    const pnl = summarisePnl([stock({ marketPrice: 12, summary: { quantity: 100, costBase: 0, costBaseKnown: false } })]);
+    // No trades at all: only a recorded holding (e.g. a broker statement) says there are 100 units, so there's nothing to measure a gain against.
+    const h = { asAt: "2026-06-30", units: 100, marketPrice: 11 } as Investment["holding"];
+    const pnl = summarisePnl([stock({ marketPrice: 12, holding: h, summary: { quantity: 0, costBase: 0, costBaseKnown: false } })]);
     expect(pnl.noCostBase).toBe(1);
     expect(pnl.unrealised.AUD.holdings).toBe(0);
   });
@@ -96,6 +98,25 @@ describe("unrealised P&L", () => {
     const pnl = summarisePnl([stock({ marketPrice: 12, summary: { quantity: 0, costBase: 0 } })]);
     expect(pnl.unrealised.AUD.holdings).toBe(0);
     expect(pnl.awaitingPrice).toBe(0);
+  });
+});
+
+describe("available units come from the transaction history", () => {
+  it("uses the units from the buy/sell history, not a hand-kept units field that disagrees", () => {
+    const h = { asAt: "2026-06-30", units: 500, marketPrice: 11 } as Investment["holding"];
+    const pos = resolveMarketPosition(stock({ holding: h, marketPrice: 12, summary: { quantity: 60, costBase: 600 } }));
+    expect(pos.units).toBe(60);
+    expect(pos.marketValue).toBe(720);
+  });
+  it("shows no active position (no units, no value) once the history nets to zero", () => {
+    const pos = resolveMarketPosition(stock({ marketPrice: 12, sells: 1, summary: { quantity: 0, costBase: 0, closed: true } }));
+    expect(pos.units).toBeNull();
+    expect(pos.marketValue).toBeNull();
+  });
+  it("a security bought again after being fully sold has its new units and a fresh cost base", () => {
+    const pnl = summarisePnl([stock({ marketPrice: 35, sells: 1, summary: { quantity: 20, costBase: 600, closed: false, realisedGain: 20, realisedCostBase: 100 } })]);
+    expect(pnl.unrealised.AUD.amount).toBe(100); // 20 × $35 − $600, none of the earlier realised gain
+    expect(pnl.realised.AUD.amount).toBe(20);
   });
 });
 

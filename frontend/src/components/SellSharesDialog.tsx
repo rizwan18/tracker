@@ -3,8 +3,12 @@ import { api, ApiError } from "../api/client";
 import type { Investment, SalePreview, SaleResult } from "../api/types";
 import { Alert, Button, Field, inputClass } from "./ui";
 import { Modal } from "./Modal";
-import { formatDate } from "../lib/format";
+import { BrokerAccountSelect } from "./BrokerAccountSelect";
+import { formatDate, formatDateTime } from "../lib/format";
 import { formatPrice, formatUnits } from "../lib/holdings";
+import { brokerLabel, holdingBrokerAccountId } from "../lib/brokers";
+import { resolveMarketPosition } from "../lib/pnl";
+import { useBrokerAccounts } from "../lib/useBrokerAccounts";
 import { OUTCOME_LABEL, formatCentsIn, formatCentsSigned, localToday, newRequestId, outcomeColour, parseTyped, validateSaleInputs } from "../lib/sale";
 
 type Step = "form" | "review" | "done";
@@ -32,6 +36,10 @@ export function SellSharesDialog({ investment, onCancel, onFinished }: { investm
   const [price, setPrice] = useState("");
   const [date, setDate] = useState(today);
   const [fees, setFees] = useState("0");
+  // Defaults to the account the holding was bought through; the person can pick another on purpose.
+  const [brokerAccountId, setBrokerAccountId] = useState(() => holdingBrokerAccountId(investment) ?? "");
+  const { accounts } = useBrokerAccounts();
+  const chosenAccount = accounts.find((a) => a.id === brokerAccountId);
   const [step, setStep] = useState<Step>("form");
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -81,7 +89,7 @@ export function SellSharesDialog({ investment, onCancel, onFinished }: { investm
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await api.post<SaleResult>(`/investments/${investment.id}/sales`, { ...draft, clientRequestId: requestId });
+      const res = await api.post<SaleResult>(`/investments/${investment.id}/sales`, { ...draft, brokerAccountId: brokerAccountId || null, clientRequestId: requestId });
       setResult(res);
       setStep("done");
     } catch (err) {
@@ -105,8 +113,20 @@ export function SellSharesDialog({ investment, onCancel, onFinished }: { investm
     </div>
   );
 
+  // What the units you keep are worth now, at the latest valid market price (never a made-up one).
+  const market = resolveMarketPosition(investment);
+  const keptUnrealised = (p: SalePreview) => {
+    if (p.closesHolding) return { text: "None — no units remain after this sale", tone: "text-[var(--color-ink-soft)]" };
+    if (market.marketPrice === null) return { text: "Unavailable — no market price yet", tone: "text-[var(--color-ink-soft)]" };
+    const cents = Math.round(p.remainingQuantity * market.marketPrice * 100) - p.remainingCostBaseCents;
+    return { text: formatCentsSigned(cents, currency), tone: cents > 0 ? "text-[var(--color-eucalyptus)]" : cents < 0 ? "text-[var(--color-brick)]" : "" };
+  };
+
   const figures = (p: SalePreview) => (
     <dl className="divide-y divide-[var(--color-line)] rounded-xl border border-[var(--color-line)] px-4" aria-live="polite">
+      {row("Units held now", formatUnits(available))}
+      {row("Units being sold", formatUnits(p.quantity))}
+      {row("Units remaining after the sale", formatUnits(p.remainingQuantity), true)}
       {row("Gross sale proceeds", money(p.grossProceedsCents))}
       {row("Selling fees", p.feesCents > 0 ? `− ${money(p.feesCents)}` : money(0))}
       {row("Net sale proceeds", money(p.netProceedsCents), true)}
@@ -119,6 +139,18 @@ export function SellSharesDialog({ investment, onCancel, onFinished }: { investm
       <div className="flex items-baseline justify-between gap-4 py-2.5">
         <dt className={`text-sm font-semibold ${outcomeColour(p.outcome)}`}>{OUTCOME_LABEL[p.outcome]}</dt>
         <dd className={`text-lg font-display font-semibold tabular-nums ${outcomeColour(p.outcome)}`}>{p.outcome === "BREAK_EVEN" ? money(0) : formatCentsSigned(p.gainLossCents, currency)}</dd>
+      </div>
+      <div className="flex items-baseline justify-between gap-4 py-2.5">
+        <dt className="text-sm text-[var(--color-ink-soft)]">
+          Unrealised P&amp;L on the units you keep
+          {!p.closesHolding && market.marketPrice !== null && (
+            <span className="block text-xs font-normal">
+              at {formatPrice(market.marketPrice, currency)}
+              {market.marketPriceAsAt ? ` · ${market.priceBasis === "live" ? "as at" : "recorded"} ${formatDateTime(market.marketPriceAsAt)}` : ""}
+            </span>
+          )}
+        </dt>
+        <dd className={`text-sm font-semibold tabular-nums text-right ${keptUnrealised(p).tone}`}>{keptUnrealised(p).text}</dd>
       </div>
     </dl>
   );
@@ -163,6 +195,10 @@ export function SellSharesDialog({ investment, onCancel, onFinished }: { investm
             </Field>
           </div>
 
+          <Field label="Broker account" htmlFor="sell-broker" hint="Pre-selected from where you bought this holding. Choose another if this sale went through a different account.">
+            <BrokerAccountSelect id="sell-broker" value={brokerAccountId} onChange={setBrokerAccountId} />
+          </Field>
+
           {anyTyped && inputError && <p role="alert" className="text-sm text-[var(--color-brick)] bg-[var(--color-brick-tint)] rounded-lg px-3 py-2">{inputError}</p>}
           {current?.error && <p role="alert" className="text-sm text-[var(--color-brick)] bg-[var(--color-brick-tint)] rounded-lg px-3 py-2">{current.error}</p>}
           {calculating && <p className="text-sm text-[var(--color-ink-soft)]">Calculating…</p>}
@@ -188,6 +224,7 @@ export function SellSharesDialog({ investment, onCancel, onFinished }: { investm
             {row("Sale date", formatDate(preview.saleDate))}
             {row("Quantity sold", `${formatUnits(preview.quantity)} ${preview.quantity === 1 ? "share" : "shares"}`)}
             {row("Sale price per share", formatPrice(preview.pricePerShare, currency))}
+            {row("Broker account", chosenAccount ? brokerLabel(chosenAccount) : "Not recorded")}
           </dl>
           {figures(preview)}
           <p className="text-sm">

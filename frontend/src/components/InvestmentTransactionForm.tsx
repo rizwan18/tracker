@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
+import { BrokerAccountSelect } from "./BrokerAccountSelect";
 import { Button, Field, inputClass } from "./ui";
 import { toInputDate } from "../lib/format";
 
@@ -9,6 +10,7 @@ export function InvestmentTransactionForm({ investmentId, onSaved, onCancel }: {
   const [quantity, setQuantity] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("");
   const [brokerage, setBrokerage] = useState("0");
+  const [brokerAccountId, setBrokerAccountId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -25,10 +27,11 @@ export function InvestmentTransactionForm({ investmentId, onSaved, onCancel }: {
         quantity: Number(quantity),
         pricePerUnit: Number(pricePerUnit),
         brokerage: Number(brokerage || 0),
+        brokerAccountId: brokerAccountId || null,
       });
       onSaved();
-    } catch {
-      setError("We couldn't save this transaction. Please check the details and try again.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "We couldn't save this transaction. Please check the details and try again.");
     } finally {
       setSaving(false);
     }
@@ -62,6 +65,9 @@ export function InvestmentTransactionForm({ investmentId, onSaved, onCancel }: {
       </div>
       <Field label="Brokerage" htmlFor="itx-brokerage">
         <input id="itx-brokerage" type="number" min="0" step="0.01" className={inputClass} value={brokerage} onChange={(e) => setBrokerage(e.target.value)} />
+      </Field>
+      <Field label="Broker account" htmlFor="itx-broker">
+        <BrokerAccountSelect id="itx-broker" value={brokerAccountId} onChange={setBrokerAccountId} />
       </Field>
       <div className="flex justify-end gap-3 pt-2">
         <Button type="button" variant="secondary" onClick={onCancel}>

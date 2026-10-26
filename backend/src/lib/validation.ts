@@ -87,7 +87,12 @@ export const investmentValuationSchema = z.object({
    * transaction (see the /valuation route) so brokerage is reflected in cost base and unrealised
    * gain/loss, not just the units/price shown here. */
   brokerage: z.coerce.number().min(0, "Brokerage fees can't be negative.").optional(),
+  /** Broker account used for that opening BUY (optional). */
+  brokerAccountId: z.string().min(1).optional().nullable(),
 });
+
+/** Which broker account a trade went through (optional, and always a reference — never copied details). */
+const brokerAccountIdField = z.string().min(1, "Please choose a valid broker account.").optional().nullable();
 
 export const investmentTransactionSchema = z.object({
   type: z.enum(INVESTMENT_TRANSACTION_TYPES),
@@ -95,6 +100,7 @@ export const investmentTransactionSchema = z.object({
   quantity: z.coerce.number().positive("Quantity must be greater than zero."),
   pricePerUnit: z.coerce.number().positive("Price must be greater than zero."),
   brokerage: z.coerce.number().min(0).optional(),
+  brokerAccountId: brokerAccountIdField,
   notes: z.string().optional().nullable(),
 });
 
@@ -154,6 +160,8 @@ export const shareSaleSchema = z.object({
       .optional()
       .default(0)
   ),
+  /** Broker account the sale went through; defaults on the client to the holding's own account. Optional. */
+  brokerAccountId: brokerAccountIdField,
 });
 export type ShareSaleInput = z.infer<typeof shareSaleSchema>;
 
@@ -604,3 +612,22 @@ export const holidayMilestoneSchema = z.object({
   done: z.boolean().default(false),
   notes: optionalHolidayText(1000),
 });
+
+/**
+ * A broker account: identification only. There is deliberately no password / token / PIN field, and the route rejects
+ * a request that tries to send one (see routes/brokerAccounts.ts), so credentials can never be stored by accident.
+ */
+export const brokerAccountSchema = z.object({
+  brokerName: z.string({ required_error: "Please enter the broker's name." }).trim().min(1, "Please enter the broker's name.").max(80, "The broker name is too long."),
+  accountName: z.string({ required_error: "Please enter an account name or nickname." }).trim().min(1, "Please enter an account name or nickname.").max(80, "The account name is too long."),
+  loginEmail: z
+    .string({ required_error: "Please enter the e-mail address you log in with." })
+    .trim()
+    .min(1, "Please enter the e-mail address you log in with.")
+    .max(254, "That e-mail address is too long.")
+    .email("Please enter a valid e-mail address."),
+});
+export type BrokerAccountInput = z.infer<typeof brokerAccountSchema>;
+
+/** Field names that would suggest someone is trying to store a login secret. */
+export const CREDENTIAL_FIELD_PATTERN = /pass(word|code|phrase)?|secret|token|pin|otp|2fa|credential|api.?key/i;

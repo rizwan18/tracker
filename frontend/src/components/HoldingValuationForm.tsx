@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../api/client";
 import type { Investment } from "../api/types";
 import { Button, Field, inputClass } from "./ui";
-import { formatUsd } from "../lib/holdings";
+import { BrokerAccountSelect } from "./BrokerAccountSelect";
+import { formatUsd, isStock } from "../lib/holdings";
 import { formatMoney, toInputDate } from "../lib/format";
 
 const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[$,\s]/g, "")));
@@ -21,6 +22,7 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
   const [units, setUnits] = useState(h ? String(h.units) : "");
   const [price, setPrice] = useState(h ? String(h.marketPrice) : "");
   const [brokerage, setBrokerage] = useState("");
+  const [brokerAccountId, setBrokerAccountId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -38,7 +40,7 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
     if (b !== null && b > 0 && (u === 0 || p === 0)) return setError("Please enter units and a purchase price greater than zero to record brokerage fees.");
     setSaving(true);
     try {
-      await api.put(`/investments/${investment.id}/valuation`, { asAt, units: u, marketPrice: p, brokerage: b ?? 0 });
+      await api.put(`/investments/${investment.id}/valuation`, { asAt, units: u, marketPrice: p, brokerage: b ?? 0, ...(brokerAccountId ? { brokerAccountId } : {}) });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "We couldn't save this. Please try again.");
@@ -66,6 +68,11 @@ export function HoldingValuationForm({ investment, onSaved, onCancel }: { invest
           <input id="hv-brokerage" inputMode="decimal" className={inputClass} value={brokerage} onChange={(e) => setBrokerage(e.target.value)} placeholder="0.00" />
         </Field>
       </div>
+      {isStock(investment) && (
+        <Field label="Broker account" htmlFor="hv-broker" hint="Optional — the account this purchase went through.">
+          <BrokerAccountSelect id="hv-broker" value={brokerAccountId} onChange={setBrokerAccountId} />
+        </Field>
+      )}
       {own !== null && (
         <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">
           Purchase Value: <span className="font-medium">{isUs ? formatUsd(own) : formatMoney(own)}</span>

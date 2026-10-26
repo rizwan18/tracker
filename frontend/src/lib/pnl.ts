@@ -32,7 +32,10 @@ export interface MarketPosition {
 /** The holdings table's market price / value rules, in one place. */
 export function resolveMarketPosition(inv: Investment): MarketPosition {
   const h = inv.holding ?? null;
-  const units = h ? h.units : inv.summary.quantity > 0 ? inv.summary.quantity : null;
+  // Available units come from the buy/sell history whenever there is one (never from a hand-kept units field alone);
+  // only a holding with no trades at all falls back to its recorded valuation's units.
+  const fromHistory = inv.summary.costBaseKnown !== false;
+  const units = fromHistory ? (inv.summary.quantity > 0 ? inv.summary.quantity : null) : h ? h.units : null;
   let marketPrice: number | null = null;
   let marketPriceAsAt: string | null = null;
   let priceBasis: MarketPosition["priceBasis"] = "none";

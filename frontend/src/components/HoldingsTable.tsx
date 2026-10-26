@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import type { Investment } from "../api/types";
-import { Button, Card } from "./ui";
+import type { BrokerAccount, Investment } from "../api/types";
+import { Card } from "./ui";
 import { MARKET_TITLES, formatPercent, formatPrice, formatUnits, formatUsd } from "../lib/holdings";
 import { formatDateUtc, formatDateTime, formatMoney } from "../lib/format";
 import { resolveMarketPosition } from "../lib/pnl";
+import { brokerLabel, brokerShort, holdingBrokerAccountId } from "../lib/brokers";
 
 const fmtValue = (n: number, isUs: boolean) => (isUs ? formatUsd(n) : formatMoney(n));
 // Same +/- convention as the Realised Transactions page, just usable in either currency.
@@ -33,7 +34,7 @@ const gainLossCls = (n: number) => (n >= 0 ? "text-[var(--color-eucalyptus)]" : 
  * (cost base unknown), and is blank ("—") in the market columns only if it has neither a live
  * price nor any recorded valuation at all.
  */
-export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "WALL_ST"; holdings: Investment[]; onSell?: (inv: Investment) => void }) {
+export function HoldingsTable({ market, holdings, onSell, accounts = [] }: { market: "ASX" | "WALL_ST"; holdings: Investment[]; onSell?: (inv: Investment) => void; accounts?: BrokerAccount[] }) {
   const isUs = market === "WALL_ST";
   const currency = isUs ? "USD" : "AUD";
   const rows = holdings.map((inv) => {
@@ -46,18 +47,24 @@ export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "W
     // Wall St values are US$ only; ASX values are A$ (falls back to the summary value for holdings with no valuation).
     const value = costBaseKnown ? inv.summary.costBase : h ? h.marketValue : isUs ? null : inv.summary.currentValue > 0 ? inv.summary.currentValue : null;
     const price = costBaseKnown && units ? value! / units : h ? h.marketPrice : null;
-    const unrealisedGainLoss = marketValue !== null && value !== null ? marketValue - value : null;
+    // A fully sold position has 0 units and no active unrealised position; its realised result stays visible (see below).
+    const closed = inv.summary.closed === true;
+    const unrealisedGainLoss = !closed && marketValue !== null && value !== null ? marketValue - value : null;
+    const unrealisedPercent = unrealisedGainLoss !== null && value !== null && value > 0 ? (unrealisedGainLoss / value) * 100 : null;
     return {
       inv,
-      weighting: h ? h.weightingPercent : null,
-      units,
-      price,
-      value,
-      marketPrice,
-      marketPriceAsAt,
+      closed,
+      weighting: closed ? null : h ? h.weightingPercent : null,
+      units: closed ? 0 : units,
+      price: closed ? null : price,
+      value: closed ? null : value,
+      marketPrice: closed ? null : marketPrice,
+      marketPriceAsAt: closed ? null : marketPriceAsAt,
       marketPriceIsLive,
-      marketValue,
+      marketValue: closed ? null : marketValue,
       unrealisedGainLoss,
+      unrealisedPercent,
+      realised: inv.summary.realisedGain - inv.summary.realisedLoss,
     };
   });
   const sum = (pick: (r: (typeof rows)[number]) => number | null) => rows.reduce((s, r) => s + (pick(r) ?? 0), 0);
@@ -98,9 +105,9 @@ export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "W
               <th className="px-4 py-2.5 font-medium">Symbol</th>
               <th className="px-4 py-2.5 font-medium">Name</th>
               <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Weighting</th>
-              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Units</th>
-              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Purchase Price</th>
-              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">{isUs ? "Purchase Value (US$)" : "Purchase Value"}</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Available units</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap" title="Average cost per unit, including brokerage">Avg cost/unit</th>
+              <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap" title="Cost of the units still held, including brokerage">{isUs ? "Cost basis (US$)" : "Cost basis"}</th>
               <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Market Price</th>
               <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Market Value</th>
               <th className="px-4 py-2.5 font-medium text-right whitespace-nowrap">Unrealised Gain/Loss</th>
@@ -108,8 +115,8 @@ export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "W
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-line)]">
-            {rows.map(({ inv, weighting, units, price, value, marketPrice, marketPriceAsAt, marketPriceIsLive, marketValue, unrealisedGainLoss }) => (
-              <tr key={inv.id} className="group hover:bg-[var(--color-paper-dim)]">
+            {rows.map(({ inv, closed, weighting, units, price, value, marketPrice, marketPriceAsAt, marketPriceIsLive, marketValue, unrealisedGainLoss, unrealisedPercent, realised }) => (
+              <tr key={inv.id} className={`group hover:bg-[var(--color-paper-dim)] ${closed ? "bg-[var(--color-paper-dim)]/50" : ""}`}>
                 <td className="px-4 py-3 font-medium">
                   <Link to={`/investments/${inv.id}`} className="text-[var(--color-eucalyptus-dark)] hover:underline">
                     {inv.ticker ?? "—"}
@@ -119,6 +126,21 @@ export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "W
                   <Link to={`/investments/${inv.id}`} className="hover:underline">
                     {inv.name}
                   </Link>
+                  {closed && (
+                    <p className="text-xs text-[var(--color-ink-soft)]">
+                      <span className="font-medium">Position closed</span> · realised{" "}
+                      <span className={`font-medium ${realised > 0 ? "text-[var(--color-eucalyptus)]" : realised < 0 ? "text-[var(--color-brick)]" : ""}`}>{realised === 0 ? fmtValue(0, isUs) : fmtSigned(realised, isUs)}</span>
+                    </p>
+                  )}
+                  {(() => {
+                    const id = holdingBrokerAccountId(inv);
+                    const account = id ? accounts.find((a) => a.id === id) : undefined;
+                    return account ? (
+                      <p className="text-xs text-[var(--color-ink-soft)]" title={brokerLabel(account)}>
+                        {brokerShort(account)}
+                      </p>
+                    ) : null;
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">{weighting !== null ? formatPercent(weighting) : dash}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{units !== null ? formatUnits(units) : dash}</td>
@@ -141,14 +163,26 @@ export function HoldingsTable({ market, holdings, onSell }: { market: "ASX" | "W
                 <td className="px-4 py-3 text-right tabular-nums">{marketValue !== null ? fmtValue(marketValue, isUs) : dash}</td>
                 <td className={`px-4 py-3 text-right tabular-nums font-medium ${unrealisedGainLoss !== null ? gainLossCls(unrealisedGainLoss) : ""}`}>
                   {unrealisedGainLoss !== null ? fmtSigned(unrealisedGainLoss, isUs) : dash}
+                  {unrealisedPercent !== null && <div className="text-[11px] font-normal">{`${unrealisedPercent >= 0 ? "+" : "-"}${Math.abs(unrealisedPercent).toFixed(2)}%`}</div>}
                 </td>
                 {onSell && (
                   <td className="px-3 py-2 text-right sticky right-0 bg-white group-hover:bg-[var(--color-paper-dim)]">
-                    <span title={inv.sellable && !inv.sellable.canSell ? (inv.sellable.reason ?? undefined) : undefined}>
-                      <Button size="sm" variant="secondary" disabled={!inv.sellable?.canSell} onClick={() => onSell(inv)}>
-                        Sell
-                      </Button>
-                    </span>
+                    {closed ? (
+                      <span className="text-xs text-[var(--color-ink-soft)]">Closed</span>
+                    ) : (
+                      <span title={inv.sellable && !inv.sellable.canSell ? (inv.sellable.reason ?? undefined) : undefined}>
+                        {/* A filled, dark button — deliberately unlike the pale "secondary" buttons used for ordinary actions. */}
+                        <button
+                          type="button"
+                          disabled={!inv.sellable?.canSell}
+                          onClick={() => onSell(inv)}
+                          aria-label={`Sell ${inv.ticker ?? inv.name}`}
+                          className="rounded-xl bg-[var(--color-ink)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Sell
+                        </button>
+                      </span>
+                    )}
                   </td>
                 )}
               </tr>

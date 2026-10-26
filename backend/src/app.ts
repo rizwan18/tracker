@@ -6,6 +6,7 @@ import categoryRoutes from "./routes/categories";
 import accountRoutes from "./routes/accounts";
 import propertyRoutes from "./routes/properties";
 import investmentRoutes from "./routes/investments";
+import brokerAccountRoutes from "./routes/brokerAccounts";
 import dividendRoutes from "./routes/dividends";
 import capitalGainsRoutes from "./routes/capitalGains";
 import billRoutes from "./routes/bills";
@@ -45,6 +46,7 @@ export function createApp() {
   app.use("/api/accounts", accountRoutes);
   app.use("/api/properties", propertyRoutes);
   app.use("/api/investments", investmentRoutes);
+  app.use("/api/broker-accounts", brokerAccountRoutes);
   app.use("/api/dividends", dividendRoutes);
   app.use("/api/capital-gains", capitalGainsRoutes);
   app.use("/api/bills", billRoutes);

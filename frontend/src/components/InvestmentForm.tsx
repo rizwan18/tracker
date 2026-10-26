@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { api, ApiError } from "../api/client";
 import { Button, Field, inputClass } from "./ui";
+import { BrokerAccountSelect } from "./BrokerAccountSelect";
 import { STOCK_TYPES, MARKET_TITLES, formatUsd } from "../lib/holdings";
 import { formatMoney, toInputDate } from "../lib/format";
 
@@ -34,6 +35,7 @@ export function InvestmentForm({ onSaved, onCancel, defaultType = "SHARE" }: { o
   const [units, setUnits] = useState("");
   const [price, setPrice] = useState("");
   const [brokerage, setBrokerage] = useState("");
+  const [brokerAccountId, setBrokerAccountId] = useState("");
   const [asAt, setAsAt] = useState(toInputDate(new Date()));
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +72,7 @@ export function InvestmentForm({ onSaved, onCancel, defaultType = "SHARE" }: { o
         // Only a genuine purchase (units and price both greater than zero) can become a buy
         // transaction — otherwise brokerage would have nothing to attach its cost base to.
         if (u > 0 && p > 0) {
-          body.initialTransaction = { date: asAt, quantity: u, pricePerUnit: p, brokerage: b ?? 0 };
+          body.initialTransaction = { date: asAt, quantity: u, pricePerUnit: p, brokerage: b ?? 0, ...(brokerAccountId ? { brokerAccountId } : {}) };
         } else if (b !== null && b > 0) {
           return setError("Please enter units and a purchase price greater than zero to record brokerage fees.");
         }
@@ -138,6 +140,9 @@ export function InvestmentForm({ onSaved, onCancel, defaultType = "SHARE" }: { o
               <input id="inv-brokerage" inputMode="decimal" className={inputClass} value={brokerage} onChange={(e) => setBrokerage(e.target.value)} placeholder="0.00" />
             </Field>
           </div>
+          <Field label="Broker account" htmlFor="inv-broker" hint="Optional — the account you bought through.">
+            <BrokerAccountSelect id="inv-broker" value={brokerAccountId} onChange={setBrokerAccountId} />
+          </Field>
           {purchaseValue !== null && (
             <p className="text-sm bg-[var(--color-paper-dim)] rounded-lg px-3 py-2" aria-live="polite">
               Purchase Value: <span className="font-medium">{isUs ? formatUsd(purchaseValue) : formatMoney(purchaseValue)}</span>

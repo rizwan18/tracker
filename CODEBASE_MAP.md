@@ -30,7 +30,7 @@ Commands (repo root): `npm run dev`, `npm run build`, `npm test` (backend then f
 ## 2. Shares & ETFs: data flow
 
 ```
-Prisma: Investment, InvestmentTransaction (BUY/SELL, + frozen *Cents on recorded sales), InvestmentValuation, Dividend
+Prisma: Investment, InvestmentTransaction (BUY/SELL, + frozen *Cents on recorded sales, optional brokerAccountId), BrokerAccount, InvestmentValuation, Dividend
    │
    ▼
 backend/src/services/holdings.ts
@@ -47,7 +47,8 @@ POST /api/investments/refresh-market-prices    → services/marketPriceRefresh.t
 frontend pages/InvestmentsPage.tsx
    ├─ lib/pnl.ts  summarisePnl()  → components/PnlSummaryCards.tsx   (Realised / Unrealised P&L)
    ├─ components/SecurityPriceCheckPanel.tsx                           (blue "Check Security Price" panel)
-   ├─ components/HoldingsTable.tsx  (uses lib/pnl.ts resolveMarketPosition for price/value)
+   ├─ components/HoldingsTable.tsx  (uses lib/pnl.ts resolveMarketPosition; units come from the ledger)
+   ├─ components/TransactionsTable.tsx  (one list of buys + sells; rows from `transactionRows`)
    └─ components/SellSharesDialog.tsx → services/shareSales.ts
 ```
 
@@ -61,7 +62,9 @@ frontend pages/InvestmentsPage.tsx
 |---|---|---|
 | Shares & ETFs screen | `pages/InvestmentsPage.tsx` | `routes/investments.ts` |
 | Realised / Unrealised P&L cards | `components/PnlSummaryCards.tsx`, `lib/pnl.ts` | `services/holdings.ts` (`computeHoldingSummary`) |
-| Holdings table | `components/HoldingsTable.tsx` | `routes/investments.ts` |
+| Holdings table (open + closed, Available units, Sell button) | `components/HoldingsTable.tsx` | `routes/investments.ts` |
+| Unified buy/sell transactions table (filters, sort, mobile cards) | `components/TransactionsTable.tsx`, `lib/transactions.ts` | `services/holdings.ts` (`transactionRowsOf`, same replay as holdings) |
+| Broker accounts (dropdown, add/edit/remove) | `components/BrokerAccountSelect.tsx`, `components/BrokerAccountsManager.tsx`, `lib/brokers.ts`, `lib/useBrokerAccounts.ts` | `routes/brokerAccounts.ts`, `services/brokerAccounts.ts`, `BrokerAccount` model, `InvestmentTransaction.brokerAccountId` |
 | Sell shares | `components/SellSharesDialog.tsx`, `lib/sale.ts` | `services/shareSales.ts`, `lib/shareSale.ts` |
 | Sales by financial year (formerly "View Trades"), route `/investments/realised` | `pages/RealisedTransactionsPage.tsx` | `routes/capitalGains.ts`, `lib/capitalGains.ts` |
 | Check Security Price panel | `components/SecurityPriceCheckPanel.tsx` | `routes/investments.ts` (refresh) |
@@ -87,6 +90,8 @@ Properties, bills, holidays, reminders, Money (income/expenses), Reports, Import
 - Frontend `frontend/src/tests` (Vitest, node, no DOM): `pnl.test.ts` (calculation), `components.test.tsx` (server-rendered card/panel states).
 
 ## 7. Known limitations
+
+- Holdings are tracked per security, not per broker account: average cost pools every account, and a broker account is a label on each trade. Backup/restore (`/api/data`) does not include broker accounts yet.
 
 - Backend suites that import Prisma need `prisma generate` (needs network access to Prisma's binary host).
 - "Total portfolio value" on the Shares screen sums every investment type and both currencies (unchanged, flagged).

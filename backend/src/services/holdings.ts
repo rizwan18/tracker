@@ -62,6 +62,8 @@ export interface LedgerReplay<T extends LedgerTx = LedgerTx> {
   sales: ReplayedSale<T>[];
   hasBuys: boolean;
   hasSells: boolean;
+  /** Units and cost base held immediately after each transaction, in replay order (the basis of the transactions table). */
+  steps: Array<{ tx: T; quantityAfter: number; costBaseAfter: number }>;
 }
 
 /**
@@ -82,6 +84,7 @@ export function replayLedger<T extends LedgerTx>(txs: readonly T[]): LedgerRepla
   let hasSells = false;
   let firstBuyDate: Date | null = null;
   const sales: ReplayedSale<T>[] = [];
+  const steps: LedgerReplay<T>["steps"] = [];
 
   for (const tx of [...txs].sort(compareLedger)) {
     const q = dec(tx.quantity);
@@ -90,6 +93,7 @@ export function replayLedger<T extends LedgerTx>(txs: readonly T[]): LedgerRepla
       firstBuyDate ??= tx.date;
       quantity = quantity.plus(q);
       costBase = costBase.plus(q.times(dec(tx.pricePerUnit))).plus(dec(tx.brokerage));
+      steps.push({ tx, quantityAfter: quantity.toNumber(), costBaseAfter: costBase.toNumber() });
       continue;
     }
     hasSells = true;
@@ -111,9 +115,35 @@ export function replayLedger<T extends LedgerTx>(txs: readonly T[]): LedgerRepla
     costBase = costBase.minus(costOfSold);
     // Nothing left: no cost base left either (drops sub-cent rounding dust from the final allocation).
     if (quantity.isZero()) costBase = new D(0);
+    steps.push({ tx, quantityAfter: quantity.toNumber(), costBaseAfter: costBase.toNumber() });
   }
 
-  return { quantityExact: quantity, costBaseExact: costBase, quantity: quantity.toNumber(), costBase: costBase.toNumber(), sales, hasBuys, hasSells };
+  return { quantityExact: quantity, costBaseExact: costBase, quantity: quantity.toNumber(), costBase: costBase.toNumber(), sales, hasBuys, hasSells, steps };
+}
+
+/** One transaction as the Shares & ETFs transactions table shows it. Everything comes from the same replay as the holding totals. */
+export interface TransactionRow {
+  id: string;
+  /** BUY: units × price + brokerage (what it cost). SELL: units × price − fees (net proceeds). */
+  totalValue: number;
+  /** Units held straight after this transaction. */
+  unitsAfter: number;
+  /** SELL only: net proceeds − cost base of the units sold (positive = profit). null for a BUY — not applicable. */
+  realisedGainLoss: number | null;
+}
+
+export function transactionRowsOf(txs: readonly (LedgerTx & { id: string })[]): TransactionRow[] {
+  const replay = replayLedger(txs);
+  const saleOf = new Map(replay.sales.map((s) => [s.tx.id, s]));
+  return replay.steps.map(({ tx, quantityAfter }) => {
+    const sale = saleOf.get(tx.id);
+    return {
+      id: tx.id,
+      totalValue: sale ? sale.proceeds : dec(tx.quantity).times(dec(tx.pricePerUnit)).plus(dec(tx.brokerage)).toNumber(),
+      unitsAfter: quantityAfter,
+      realisedGainLoss: sale ? sale.gainLoss : null,
+    };
+  });
 }
 
 /** The lowest number of units held at any point in the (replayed) ledger — negative means a sale exceeded what was held at that time. */
@@ -129,6 +159,16 @@ export function lowestRunningQuantity(txs: readonly LedgerTx[]): { lowest: Dec; 
     }
   }
   return { lowest, at };
+}
+
+/** True when adding `added` to `history` would leave the holding short of units at some point it wasn't short before (a sale of more than was held). */
+export function addingLeavesShortfall(history: readonly LedgerTx[], added: LedgerTx): boolean {
+  return lowestRunningQuantity([...history, added]).lowest.lt(lowestRunningQuantity(history).lowest.minus(QTY_EPSILON));
+}
+
+/** True when removing the transaction `removedId` would leave the holding short of units (e.g. deleting a purchase a later sale relies on). */
+export function removingLeavesShortfall(history: readonly (LedgerTx & { id: string })[], removedId: string): boolean {
+  return lowestRunningQuantity(history.filter((t) => t.id !== removedId)).lowest.lt(lowestRunningQuantity(history).lowest.minus(QTY_EPSILON));
 }
 
 /** Whether (and how many) units of a holding can be sold with the Sell action, and why not if it can't. */

@@ -160,7 +160,30 @@ export interface InvestmentTransactionRecord {
   gainLossCents?: number | null;
   /** How the cost base was allocated, e.g. "AVERAGE_COST". */
   costMethod?: string | null;
+  /** The broker account this trade went through (older trades have none). */
+  brokerAccountId?: string | null;
   createdAt?: string;
+}
+
+/** A broker account: identification only (broker, nickname, login e-mail) — never credentials. */
+export interface BrokerAccount {
+  id: string;
+  brokerName: string;
+  accountName: string;
+  loginEmail: string;
+  /** How many trades refer to this account (an account with trades can't be removed). */
+  transactionCount: number;
+}
+
+/** One transaction's derived figures from the server's single ledger replay (see transactionRowsOf on the backend). */
+export interface TransactionRow {
+  id: string;
+  /** BUY: units × price + brokerage. SELL: net proceeds (units × price − fees). */
+  totalValue: number;
+  /** Units held straight after this transaction. */
+  unitsAfter: number;
+  /** SELL only: net proceeds − cost base of the units sold. null for a purchase. */
+  realisedGainLoss: number | null;
 }
 
 /** Whether a holding can be sold with the Sell action (and how many units), and why not if it can't. */
@@ -240,6 +263,8 @@ export interface Investment {
    * anything that isn't a share/ETF/LIC). */
   marketOpen?: boolean | null;
   investmentTransactions: InvestmentTransactionRecord[];
+  /** Per-transaction totals, units-after and realised P&L, from the same replay as `summary`. */
+  transactionRows?: TransactionRow[];
   dividends: Dividend[];
   summary: {
     quantity: number;

@@ -56,6 +56,7 @@ model Household {
   transactions  Transaction[]
   properties    Property[]
   investments   Investment[]
+  brokerAccounts BrokerAccount[]
   bills         Bill[]
   reminders     Reminder[]
   documents     Document[]
@@ -383,13 +384,36 @@ model InvestmentTransaction {
   /// enforced inside the sale transaction, under a row lock on the investment — see services/shareSales.ts.
   clientRequestId    String?
 
+  /// The broker account this trade was placed through (optional: older trades have none). Referenced by id, so editing
+  /// the account's name/email later never detaches or rewrites a trade. Identification only — never credentials.
+  brokerAccountId    String?
+  brokerAccount      BrokerAccount? @relation(fields: [brokerAccountId], references: [id], onDelete: SetNull)
+
   notes        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  @@index([brokerAccountId])
   @@index([investmentId, clientRequestId])
   @@index([investmentId])
   @@index([date])
+}
+
+/// A brokerage account shares/ETFs are bought and sold through. Several accounts can share one broker. Holds only
+/// what identifies the account (broker, nickname, login e-mail) — never a password, token or any other credential.
+model BrokerAccount {
+  id          String   @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id])
+  brokerName  String
+  accountName String
+  loginEmail  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  investmentTransactions InvestmentTransaction[]
+
+  @@index([householdId])
 }
 
 model Dividend {

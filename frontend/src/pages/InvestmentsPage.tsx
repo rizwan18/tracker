@@ -8,6 +8,10 @@ import { InvestmentForm } from "../components/InvestmentForm";
 import { HoldingsTable } from "../components/HoldingsTable";
 import { SellSharesDialog } from "../components/SellSharesDialog";
 import { PnlSummaryCards } from "../components/PnlSummaryCards";
+import { TransactionsTable } from "../components/TransactionsTable";
+import { BrokerAccountsManager } from "../components/BrokerAccountsManager";
+import { buildTransactionLines } from "../lib/transactions";
+import { useBrokerAccounts } from "../lib/useBrokerAccounts";
 import { SecurityPriceCheckPanel, type PriceCheckState } from "../components/SecurityPriceCheckPanel";
 import { resolveMarketPosition, summarisePnl } from "../lib/pnl";
 import { isStock, marketOf } from "../lib/holdings";
@@ -44,6 +48,9 @@ export default function InvestmentsPage() {
   }, []);
 
   useEffect(load, [load]);
+
+  const { accounts, reload: reloadAccounts } = useBrokerAccounts();
+  const [managingBrokers, setManagingBrokers] = useState(false);
 
   const [priceCheck, setPriceCheck] = useState<PriceCheckState>({ status: "idle" });
   const [refreshing, setRefreshing] = useState(false);
@@ -101,11 +108,13 @@ export default function InvestmentsPage() {
   const totalValue = investments.reduce((s, i) => s + i.summary.currentValue, 0);
   const pnl = summarisePnl(investments);
   const allStocks = investments.filter(isStock);
-  // A holding sold down to nothing is closed: kept, with its history, but listed separately from what you hold.
+  // `stocks` = what is still held (prices, P&L). A fully sold holding stays in the holdings tables below with 0 available
+  // units and its realised result, so nothing disappears and there is no separate "closed" list to look at.
   const stocks = allStocks.filter((i) => !i.summary.closed);
-  const closedStocks = allStocks.filter((i) => i.summary.closed);
-  const asxStocks = stocks.filter((i) => marketOf(i) === "ASX");
-  const usStocks = stocks.filter((i) => marketOf(i) === "WALL_ST");
+  const asxStocks = allStocks.filter((i) => marketOf(i) === "ASX");
+  const usStocks = allStocks.filter((i) => marketOf(i) === "WALL_ST");
+  const transactionLines = buildTransactionLines(investments);
+  const securities = allStocks.map((i) => ({ id: i.id, label: i.ticker ? `${i.ticker} — ${i.name}` : i.name })).sort((a, b) => a.label.localeCompare(b.label));
   // Crypto, managed funds and term deposits have their own page now (see
   // CryptoManagedFundsPage.tsx) — everything else non-stock still lands here.
   const others = investments.filter((i) => !isStock(i) && !["CRYPTO", "MANAGED_FUND", "TERM_DEPOSIT"].includes(i.type));
@@ -125,6 +134,9 @@ export default function InvestmentsPage() {
             <Link to="/import-export?section=investments">
               <Button variant="secondary">Import/Export</Button>
             </Link>
+            <Button variant="secondary" onClick={() => setManagingBrokers(true)}>
+              Broker accounts
+            </Button>
             <Button onClick={() => setShowForm(true)}>+ Add investment</Button>
           </div>
         }
@@ -159,38 +171,11 @@ export default function InvestmentsPage() {
         />
       ) : (
         <div className="space-y-8">
-          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} onSell={setSellTarget} />}
-          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} onSell={setSellTarget} />}
+          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} onSell={setSellTarget} accounts={accounts} />}
+          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} onSell={setSellTarget} accounts={accounts} />}
           {stocks.length > 0 && latestStatement === undefined && <p className="text-xs text-[var(--color-ink-soft)]">Units and prices come from what you record on each holding.</p>}
 
-          {closedStocks.length > 0 && (
-            <section>
-              <h3 className="font-display text-lg font-semibold mb-2">Closed holdings</h3>
-              <Card className="p-0 overflow-hidden">
-                <ul className="divide-y divide-[var(--color-line)]">
-                  {closedStocks.map((inv) => {
-                    const realised = inv.summary.realisedGain - inv.summary.realisedLoss;
-                    return (
-                      <li key={inv.id}>
-                        <Link to={`/investments/${inv.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-[var(--color-paper-dim)]">
-                          <div>
-                            <p className="font-medium text-[var(--color-ink)]">
-                              {inv.name} {inv.ticker && <span className="text-[var(--color-ink-soft)] font-normal">({inv.ticker})</span>}
-                            </p>
-                            <p className="text-xs text-[var(--color-ink-soft)]">Fully sold — history kept</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs text-[var(--color-ink-soft)]">Realised</p>
-                            <p className={`font-medium ${realised >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}`}>{formatCurrencySigned(realised)}</p>
-                          </div>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Card>
-            </section>
-          )}
+          {allStocks.length > 0 && <TransactionsTable lines={transactionLines} accounts={accounts} securities={securities} />}
 
           {others.length > 0 && (
             <section>
@@ -229,6 +214,18 @@ export default function InvestmentsPage() {
           onFinished={() => {
             setSellTarget(null);
             load();
+            reloadAccounts();
+          }}
+        />
+      )}
+
+      {managingBrokers && (
+        <BrokerAccountsManager
+          accounts={accounts}
+          onChanged={reloadAccounts}
+          onClose={() => {
+            setManagingBrokers(false);
+            reloadAccounts();
           }}
         />
       )}
