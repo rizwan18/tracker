@@ -105,6 +105,15 @@ export const investmentTransactionSchema = z.object({
 });
 
 /**
+ * Correcting an existing transaction. Same field rules as recording one, plus an optional `investmentId` to move it to a
+ * different security when it was entered against the wrong one.
+ */
+export const investmentTransactionEditSchema = investmentTransactionSchema.extend({
+  investmentId: z.string().min(1, "Please choose a security.").optional(),
+});
+export type InvestmentTransactionEditInput = z.infer<typeof investmentTransactionEditSchema>;
+
+/**
  * The initial buy recorded from the "Add an investment" form (Units + Purchase Price + Purchase
  * Date + Brokerage fees). Reuses investmentTransactionSchema's own field rules so this initial buy
  * is validated exactly like any other buy/sell transaction — it's always a BUY, so `type`/`notes`

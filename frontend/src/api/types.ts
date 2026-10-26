@@ -178,12 +178,23 @@ export interface BrokerAccount {
 /** One transaction's derived figures from the server's single ledger replay (see transactionRowsOf on the backend). */
 export interface TransactionRow {
   id: string;
+  /** Position in the server's replay (oldest = 0): the single definition of chronological order, including same-day ties. */
+  seq: number;
+  /** Holding period: 1 for the first run of buys, +1 each time it is bought again after being fully sold. 0 = sold while nothing was held. */
+  period: number;
   /** BUY: units × price + brokerage. SELL: net proceeds (units × price − fees). */
   totalValue: number;
   /** Units held straight after this transaction. */
   unitsAfter: number;
   /** SELL only: net proceeds − cost base of the units sold. null for a purchase. */
   realisedGainLoss: number | null;
+  /** Units and cost held immediately before this transaction (the pool a sale takes its average cost from). */
+  poolQuantityBefore: number;
+  poolCostBefore: number;
+  /** SELL only: cost base allocated to the units sold. */
+  costOfSold: number | null;
+  /** SELL only: sells more units than were held at that point — needs review. */
+  shortfall: boolean;
 }
 
 /** Whether a holding can be sold with the Sell action (and how many units), and why not if it can't. */

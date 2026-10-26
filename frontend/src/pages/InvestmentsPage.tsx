@@ -5,16 +5,17 @@ import type { Investment } from "../api/types";
 import { Button, Card, EmptyState, SectionHeading } from "../components/ui";
 import { Modal } from "../components/Modal";
 import { InvestmentForm } from "../components/InvestmentForm";
-import { HoldingsTable } from "../components/HoldingsTable";
 import { SellSharesDialog } from "../components/SellSharesDialog";
 import { PnlSummaryCards } from "../components/PnlSummaryCards";
 import { TransactionsTable } from "../components/TransactionsTable";
+import { EditTransactionDialog } from "../components/EditTransactionDialog";
 import { BrokerAccountsManager } from "../components/BrokerAccountsManager";
-import { buildTransactionLines } from "../lib/transactions";
+import { buildTransactionLines, type TransactionLine } from "../lib/transactions";
+import { currencyOfStock } from "../lib/pnl";
 import { useBrokerAccounts } from "../lib/useBrokerAccounts";
 import { SecurityPriceCheckPanel, type PriceCheckState } from "../components/SecurityPriceCheckPanel";
 import { resolveMarketPosition, summarisePnl } from "../lib/pnl";
-import { isStock, marketOf } from "../lib/holdings";
+import { isStock } from "../lib/holdings";
 import { formatCurrency, formatCurrencySigned } from "../lib/format";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -51,6 +52,7 @@ export default function InvestmentsPage() {
 
   const { accounts, reload: reloadAccounts } = useBrokerAccounts();
   const [managingBrokers, setManagingBrokers] = useState(false);
+  const [editTarget, setEditTarget] = useState<TransactionLine | null>(null);
 
   const [priceCheck, setPriceCheck] = useState<PriceCheckState>({ status: "idle" });
   const [refreshing, setRefreshing] = useState(false);
@@ -111,14 +113,11 @@ export default function InvestmentsPage() {
   // `stocks` = what is still held (prices, P&L). A fully sold holding stays in the holdings tables below with 0 available
   // units and its realised result, so nothing disappears and there is no separate "closed" list to look at.
   const stocks = allStocks.filter((i) => !i.summary.closed);
-  const asxStocks = allStocks.filter((i) => marketOf(i) === "ASX");
-  const usStocks = allStocks.filter((i) => marketOf(i) === "WALL_ST");
   const transactionLines = buildTransactionLines(investments);
-  const securities = allStocks.map((i) => ({ id: i.id, label: i.ticker ? `${i.ticker} — ${i.name}` : i.name })).sort((a, b) => a.label.localeCompare(b.label));
+  const securities = allStocks.map((i) => ({ id: i.id, label: i.ticker ? `${i.ticker} — ${i.name}` : i.name, currency: currencyOfStock(i) })).sort((a, b) => a.label.localeCompare(b.label));
   // Crypto, managed funds and term deposits have their own page now (see
   // CryptoManagedFundsPage.tsx) — everything else non-stock still lands here.
   const others = investments.filter((i) => !isStock(i) && !["CRYPTO", "MANAGED_FUND", "TERM_DEPOSIT"].includes(i.type));
-  const latestStatement = stocks.map((i) => i.holding?.asAt).filter(Boolean).sort().at(-1);
   // Price-check panel facts, taken from the holdings still held (a fully sold holding no longer needs a price).
   const latestPriceAt = stocks.map((i) => i.marketPriceUpdatedAt).filter((t): t is string => !!t).sort().at(-1) ?? null;
   const unpricedCount = stocks.filter((i) => i.ticker && resolveMarketPosition(i).priceBasis === "none").length;
@@ -171,11 +170,7 @@ export default function InvestmentsPage() {
         />
       ) : (
         <div className="space-y-8">
-          {asxStocks.length > 0 && <HoldingsTable market="ASX" holdings={asxStocks} onSell={setSellTarget} accounts={accounts} />}
-          {usStocks.length > 0 && <HoldingsTable market="WALL_ST" holdings={usStocks} onSell={setSellTarget} accounts={accounts} />}
-          {stocks.length > 0 && latestStatement === undefined && <p className="text-xs text-[var(--color-ink-soft)]">Units and prices come from what you record on each holding.</p>}
-
-          {allStocks.length > 0 && <TransactionsTable lines={transactionLines} accounts={accounts} securities={securities} />}
+          {allStocks.length > 0 && <TransactionsTable investments={investments} lines={transactionLines} accounts={accounts} onSell={setSellTarget} onEdit={setEditTarget} />}
 
           {others.length > 0 && (
             <section>
@@ -213,6 +208,19 @@ export default function InvestmentsPage() {
           onCancel={() => setSellTarget(null)}
           onFinished={() => {
             setSellTarget(null);
+            load();
+            reloadAccounts();
+          }}
+        />
+      )}
+
+      {editTarget && (
+        <EditTransactionDialog
+          line={editTarget}
+          securities={securities}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            setEditTarget(null);
             load();
             reloadAccounts();
           }}

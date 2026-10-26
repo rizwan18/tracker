@@ -1,23 +1,22 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { BrokerAccount } from "../api/types";
+import type { BrokerAccount, Investment } from "../api/types";
 import { Button, Card, inputClass } from "./ui";
-import { formatDateUtc } from "../lib/format";
+import { formatDateTime, formatDateUtc } from "../lib/format";
 import { formatPrice, formatUnits } from "../lib/holdings";
 import { brokerLabel, brokerShort } from "../lib/brokers";
 import {
-  DEFAULT_SORT,
   NO_BROKER,
   NO_FILTERS,
-  filterLines,
   formatLineMoney,
+  groupBySecurity,
   hasActiveFilters,
-  sortLines,
-  type SortKey,
+  matchSale,
+  type SecurityGroup,
   type TransactionFilters,
   type TransactionLine,
-  type TransactionSort,
 } from "../lib/transactions";
+import type { Currency } from "../lib/pnl";
 
 const GAIN = "text-[var(--color-eucalyptus)]";
 const LOSS = "text-[var(--color-brick)]";
@@ -40,68 +39,180 @@ export function RealisedCell({ line }: { line: Pick<TransactionLine, "type" | "r
       </span>
     );
   }
-  const n = Math.round(line.realisedGainLoss * 100) / 100;
-  if (n === 0) return <span className="text-[var(--color-ink-soft)]">{formatLineMoney(0, line.currency)}</span>;
+  return <Signed amount={line.realisedGainLoss} currency={line.currency} />;
+}
+
+/** A profit/loss figure: green + for profit, red − for loss, neutral for exactly zero. */
+export function Signed({ amount, currency, bold = true }: { amount: number; currency: Currency; bold?: boolean }) {
+  const n = Math.round(amount * 100) / 100;
+  if (n === 0) return <span className="text-[var(--color-ink-soft)]">{formatLineMoney(0, currency)}</span>;
   return (
-    <span className={`font-medium ${n > 0 ? GAIN : LOSS}`} data-tone={n > 0 ? "profit" : "loss"}>
+    <span className={`${bold ? "font-medium" : ""} ${n > 0 ? GAIN : LOSS}`} data-tone={n > 0 ? "profit" : "loss"}>
       {n > 0 ? "+" : "-"}
-      {formatLineMoney(Math.abs(n), line.currency)}
+      {formatLineMoney(Math.abs(n), currency)}
     </span>
   );
 }
 
-const SORT_OPTIONS: Array<{ value: string; label: string; sort: TransactionSort }> = [
-  { value: "date-desc", label: "Newest first", sort: { key: "date", dir: "desc" } },
-  { value: "date-asc", label: "Oldest first", sort: { key: "date", dir: "asc" } },
-  { value: "security-asc", label: "Security A–Z", sort: { key: "security", dir: "asc" } },
-  { value: "total-desc", label: "Largest value", sort: { key: "total", dir: "desc" } },
-  { value: "realised-desc", label: "Best realised P&L", sort: { key: "realised", dir: "desc" } },
-  { value: "realised-asc", label: "Worst realised P&L", sort: { key: "realised", dir: "asc" } },
-];
+/**
+ * How one sale's figures were reached, set directly under the sale so the purchases and the sale can be compared.
+ * The cost-basis method is average cost: a sale takes the pooled average of everything held at that moment, so it is matched
+ * to the purchases in its holding period rather than to one purchase. Nothing is assigned by guesswork.
+ */
+export function SaleMatchBox({ sell, groupLines, currency }: { sell: TransactionLine; groupLines: TransactionLine[]; currency: Currency }) {
+  const m = matchSale(sell, groupLines);
+  return (
+    <div className="rounded-xl border border-[var(--color-line)] border-l-4 border-l-[var(--color-ochre)] bg-[var(--color-paper-dim)] p-3 text-sm" data-testid="sale-match">
+      {m.shortfall && (
+        <p role="alert" className="mb-2 rounded-lg bg-[var(--color-brick-tint)] px-3 py-2 text-[var(--color-brick)] font-medium">
+          Needs review: this sale is for {formatUnits(sell.quantity)} units but only {formatUnits(m.poolQuantity)} were held on that date. Correct the sale, or add the missing purchase.
+        </p>
+      )}
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <p className="text-xs font-medium text-[var(--color-ink-soft)] mb-1">Purchases this sale draws on</p>
+          {m.buys.length === 0 ? (
+            <p className="text-[var(--color-ink-soft)]">No earlier purchases found for this sale.</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="text-left text-[var(--color-ink-soft)]">
+                <tr>
+                  <th className="font-medium pb-1">Bought</th>
+                  <th className="font-medium pb-1 text-right">Units</th>
+                  <th className="font-medium pb-1 text-right">Price</th>
+                  <th className="font-medium pb-1 text-right">Cost incl. brokerage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {m.buys.map((b) => (
+                  <tr key={b.id}>
+                    <td className="py-0.5">{formatDateUtc(b.date)}</td>
+                    <td className="py-0.5 text-right tabular-nums">{formatUnits(b.quantity)}</td>
+                    <td className="py-0.5 text-right tabular-nums">{formatPrice(b.pricePerUnit, currency)}</td>
+                    <td className="py-0.5 text-right tabular-nums">{formatLineMoney(b.totalValue, currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="text-xs text-[var(--color-ink-soft)] mt-2">Average-cost method: the pool at the time of the sale was {formatUnits(m.poolQuantity)} units costing {formatLineMoney(m.poolCost, currency)}{m.avgCost !== null ? `, an average of ${formatPrice(m.avgCost, currency)} per unit` : ""}. Earlier sales have already taken their share out of it.</p>
+        </div>
+        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 content-start">
+          <dt className="text-[var(--color-ink-soft)]">Sold</dt>
+          <dd className="text-right tabular-nums">
+            {formatUnits(m.unitsSold)} × {formatPrice(sell.pricePerUnit, currency)}
+          </dd>
+          <dt className="text-[var(--color-ink-soft)]">Net proceeds (after brokerage)</dt>
+          <dd className="text-right tabular-nums">{formatLineMoney(m.netProceeds, currency)}</dd>
+          <dt className="text-[var(--color-ink-soft)]">Cost of the units sold</dt>
+          <dd className="text-right tabular-nums">{m.costOfSold !== null ? formatLineMoney(m.costOfSold, currency) : "—"}</dd>
+          <dt className="font-medium">Realised profit / loss</dt>
+          <dd className="text-right tabular-nums font-semibold">{m.realised !== null ? <Signed amount={m.realised} currency={currency} /> : "—"}</dd>
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-[11px] uppercase tracking-wide text-[var(--color-ink-soft)]">{label}</dt>
+      <dd className="text-sm font-medium tabular-nums mt-0.5">{children}</dd>
+    </div>
+  );
+}
+
+const dash = <span className="text-[var(--color-ink-soft)]">—</span>;
+
+/** The holding's standing, from its transaction history and the latest valid price (unavailable is shown as unavailable, never as $0). */
+function GroupSummary({ group }: { group: SecurityGroup }) {
+  const { metrics: m, currency } = group;
+  const price =
+    m.marketPrice !== null ? (
+      <>
+        {formatPrice(m.marketPrice, currency)}
+        <span className="block text-[11px] font-normal text-[var(--color-ink-soft)]">
+          {m.priceBasis === "live" ? "as at" : "recorded"} {m.marketPriceAsAt ? formatDateTime(m.marketPriceAsAt) : ""}
+        </span>
+      </>
+    ) : m.closed ? (
+      dash
+    ) : (
+      <span className="text-[var(--color-ink-soft)]">Price unavailable</span>
+    );
+  return (
+    <dl className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-x-4 gap-y-3 px-4 pb-4">
+      <Metric label="Available units">{formatUnits(m.units)}</Metric>
+      <Metric label="Avg cost / unit">{m.avgCost !== null ? formatPrice(m.avgCost, currency) : dash}</Metric>
+      <Metric label="Cost basis">{m.costBase !== null ? formatLineMoney(m.costBase, currency) : dash}</Metric>
+      <Metric label="Market price">{price}</Metric>
+      <Metric label="Market value">{m.marketValue !== null ? formatLineMoney(m.marketValue, currency) : dash}</Metric>
+      <Metric label="Unrealised P&L">
+        {m.unrealised !== null ? (
+          <>
+            <Signed amount={m.unrealised} currency={currency} />
+            {m.unrealisedPercent !== null && <span className="block text-[11px] font-normal">{`${m.unrealisedPercent >= 0 ? "+" : "-"}${Math.abs(m.unrealisedPercent).toFixed(2)}%`}</span>}
+          </>
+        ) : (
+          dash
+        )}
+      </Metric>
+      <Metric label="Realised P&L">{m.hasSales ? <Signed amount={m.realised} currency={currency} /> : dash}</Metric>
+    </dl>
+  );
+}
 
 /**
- * Every share/ETF buy and sell in one list, newest first. Buys show the total cost including brokerage; sells show net
- * proceeds after brokerage and the realised profit or loss. Figures are the server's (one ledger replay shared with the
- * holdings and P&L cards). On narrow screens each transaction becomes a compact card instead of a wide table.
+ * ONE table of every share/ETF buy and sell, grouped by security. Each security's heading shows where the holding stands;
+ * under it the transactions run oldest to newest, and every sale carries the purchases it was matched against. Every
+ * transaction has an Edit action. Figures are the server's (one ledger replay shared with the P&L cards and reports).
  */
-export function TransactionsTable({ lines, accounts, securities }: { lines: TransactionLine[]; accounts: BrokerAccount[]; securities: Array<{ id: string; label: string }> }) {
+export function TransactionsTable({
+  investments,
+  lines,
+  accounts,
+  onSell,
+  onEdit,
+}: {
+  investments: Investment[];
+  lines: TransactionLine[];
+  accounts: BrokerAccount[];
+  onSell: (inv: Investment) => void;
+  onEdit: (line: TransactionLine) => void;
+}) {
   const [filters, setFilters] = useState<TransactionFilters>(NO_FILTERS);
-  const [sort, setSort] = useState<TransactionSort>(DEFAULT_SORT);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [showMatching, setShowMatching] = useState(true);
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
-  const shown = useMemo(() => sortLines(filterLines(lines, filters), sort), [lines, filters, sort]);
+  const groups = useMemo(() => groupBySecurity(investments, lines, filters), [investments, lines, filters]);
+  const allGroups = useMemo(() => groupBySecurity(investments, lines), [investments, lines]);
   const set = (patch: Partial<TransactionFilters>) => setFilters((f) => ({ ...f, ...patch }));
+  const total = lines.length;
+  const shown = groups.reduce((n, g) => n + g.lines.length, 0);
+  const toggle = (id: string) =>
+    setCollapsed((c) => {
+      const next = new Set(c);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
-  const brokerOf = (l: TransactionLine) => (l.brokerAccountId ? accountById.get(l.brokerAccountId) : undefined);
   const brokerCell = (l: TransactionLine) => {
-    const a = brokerOf(l);
+    const a = l.brokerAccountId ? accountById.get(l.brokerAccountId) : undefined;
     if (a) return <span title={brokerLabel(a)}>{brokerShort(a)}</span>;
     return <span className="text-[var(--color-ink-soft)]">{l.brokerAccountId ? "Account unavailable" : "Not recorded"}</span>;
   };
-  const securityCell = (l: TransactionLine) => (
-    <Link to={`/investments/${l.investmentId}`} className="font-medium hover:underline">
-      {l.ticker ?? l.name}
-      {l.ticker && <span className="block text-xs font-normal text-[var(--color-ink-soft)] max-w-[14rem] truncate">{l.name}</span>}
-    </Link>
+  const editButton = (l: TransactionLine, g: SecurityGroup) => (
+    <button
+      type="button"
+      onClick={() => onEdit(l)}
+      aria-label={`Edit ${l.type === "BUY" ? "buy" : "sell"} of ${g.investment.ticker ?? g.investment.name} on ${formatDateUtc(l.date)}`}
+      className="rounded-lg border border-[var(--color-line)] bg-white px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-paper-dim)]"
+    >
+      Edit
+    </button>
   );
-
-  const toggle = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "security" || key === "type" ? "asc" : "desc" }));
-  const th = (key: SortKey | null, label: string, right = true) => {
-    const active = key !== null && sort.key === key;
-    return (
-      <th className={`px-3 py-2.5 font-medium whitespace-nowrap ${right ? "text-right" : ""}`} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
-        {key ? (
-          <button type="button" onClick={() => toggle(key)} className="hover:text-[var(--color-ink)] inline-flex items-center gap-1">
-            {label}
-            <span aria-hidden="true" className={active ? "" : "opacity-30"}>
-              {active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}
-            </span>
-          </button>
-        ) : (
-          label
-        )}
-      </th>
-    );
-  };
 
   return (
     <section aria-labelledby="transactions-heading">
@@ -110,170 +221,235 @@ export function TransactionsTable({ lines, accounts, securities }: { lines: Tran
           All transactions
         </h3>
         <p className="text-xs text-[var(--color-ink-soft)]" aria-live="polite">
-          {lines.length === 0 ? "" : shown.length === lines.length ? `${lines.length} ${lines.length === 1 ? "transaction" : "transactions"}` : `Showing ${shown.length} of ${lines.length}`}
+          {total === 0 ? "" : shown === total ? `${total} ${total === 1 ? "transaction" : "transactions"} in ${allGroups.length} ${allGroups.length === 1 ? "security" : "securities"}` : `Showing ${shown} of ${total}`}
         </p>
       </div>
 
-      {lines.length === 0 ? (
+      <Card className="mb-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+          <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
+            Security
+            <select className={`${inputClass} mt-1`} value={filters.investmentId} onChange={(e) => set({ investmentId: e.target.value })}>
+              <option value="">All securities</option>
+              {allGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
+            Broker account
+            <select className={`${inputClass} mt-1`} value={filters.brokerAccountId} onChange={(e) => set({ brokerAccountId: e.target.value })}>
+              <option value="">All accounts</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {brokerShort(a)}
+                </option>
+              ))}
+              <option value={NO_BROKER}>No account recorded</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
+            Type
+            <select className={`${inputClass} mt-1`} value={filters.type} onChange={(e) => set({ type: e.target.value as TransactionFilters["type"] })}>
+              <option value="">Buys and sells</option>
+              <option value="BUY">Buys only</option>
+              <option value="SELL">Sells only</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
+            From
+            <input type="date" className={`${inputClass} mt-1`} value={filters.from} max={filters.to || undefined} onChange={(e) => set({ from: e.target.value })} />
+          </label>
+          <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
+            To
+            <input type="date" className={`${inputClass} mt-1`} value={filters.to} min={filters.from || undefined} onChange={(e) => set({ to: e.target.value })} />
+          </label>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showMatching} onChange={(e) => setShowMatching(e.target.checked)} />
+            Show how each sale was calculated
+          </label>
+          <Button size="sm" variant="ghost" onClick={() => setCollapsed(new Set())}>
+            Expand all
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setCollapsed(new Set(groups.map((g) => g.id)))}>
+            Collapse all
+          </Button>
+          {hasActiveFilters(filters) && (
+            <Button size="sm" variant="ghost" onClick={() => setFilters(NO_FILTERS)}>
+              Clear filters
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      {groups.length === 0 ? (
         <Card>
-          <p className="text-center text-[var(--color-ink-soft)] py-6">No buy or sell transactions yet. Add an investment with a purchase, or record a trade from a holding, and it will appear here.</p>
+          <p className="text-center text-[var(--color-ink-soft)] py-6">{total === 0 ? "No shares or ETFs yet. Add an investment with a purchase and it will appear here." : "No transactions match these filters."}</p>
         </Card>
       ) : (
-        <>
-          <Card className="mb-3">
-            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 items-end">
-              <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
-                Security
-                <select className={`${inputClass} mt-1`} value={filters.investmentId} onChange={(e) => set({ investmentId: e.target.value })}>
-                  <option value="">All securities</option>
-                  {securities.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
-                Broker account
-                <select className={`${inputClass} mt-1`} value={filters.brokerAccountId} onChange={(e) => set({ brokerAccountId: e.target.value })}>
-                  <option value="">All accounts</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {brokerShort(a)}
-                    </option>
-                  ))}
-                  <option value={NO_BROKER}>No account recorded</option>
-                </select>
-              </label>
-              <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
-                Type
-                <select className={`${inputClass} mt-1`} value={filters.type} onChange={(e) => set({ type: e.target.value as TransactionFilters["type"] })}>
-                  <option value="">Buys and sells</option>
-                  <option value="BUY">Buys only</option>
-                  <option value="SELL">Sells only</option>
-                </select>
-              </label>
-              <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
-                From
-                <input type="date" className={`${inputClass} mt-1`} value={filters.from} max={filters.to || undefined} onChange={(e) => set({ from: e.target.value })} />
-              </label>
-              <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
-                To
-                <input type="date" className={`${inputClass} mt-1`} value={filters.to} min={filters.from || undefined} onChange={(e) => set({ to: e.target.value })} />
-              </label>
-              <label className="text-xs font-medium text-[var(--color-ink-soft)] block">
-                Sort by
-                <select
-                  className={`${inputClass} mt-1`}
-                  value={SORT_OPTIONS.find((o) => o.sort.key === sort.key && o.sort.dir === sort.dir)?.value ?? "date-desc"}
-                  onChange={(e) => setSort(SORT_OPTIONS.find((o) => o.value === e.target.value)!.sort)}
-                >
-                  {SORT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {hasActiveFilters(filters) && (
-              <div className="mt-3">
-                <Button size="sm" variant="ghost" onClick={() => setFilters(NO_FILTERS)}>
-                  Clear filters
-                </Button>
-              </div>
-            )}
-          </Card>
+        <div className="space-y-4">
+          {groups.map((g) => {
+            const open = !collapsed.has(g.id);
+            const m = g.metrics;
+            const sellable = g.investment.sellable;
+            return (
+              <Card key={g.id} className="p-0 overflow-hidden" data-security={g.investment.ticker ?? g.investment.name}>
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4 pb-3">
+                  <button type="button" onClick={() => toggle(g.id)} aria-expanded={open} aria-controls={`sec-${g.id}`} className="flex items-center gap-3 text-left min-w-0">
+                    <span aria-hidden="true" className="text-[var(--color-ink-soft)] w-4">
+                      {open ? "▾" : "▸"}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-display text-lg font-semibold leading-tight">{g.investment.ticker ?? g.investment.name}</span>
+                      {g.investment.ticker && <span className="block text-sm text-[var(--color-ink-soft)] truncate">{g.investment.name}</span>}
+                    </span>
+                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-[var(--color-ink-soft)]">
+                      {g.allLines.length} {g.allLines.length === 1 ? "transaction" : "transactions"}
+                    </span>
+                    {m.closed ? (
+                      <span className="rounded-full bg-[var(--color-paper-dim)] border border-[var(--color-line)] px-2.5 py-0.5 text-xs font-medium">Position closed · 0 units</span>
+                    ) : (
+                      <span className="rounded-full bg-[var(--color-sky-tint)] text-[var(--color-sky)] px-2.5 py-0.5 text-xs font-medium">Open · {formatUnits(m.units)} units</span>
+                    )}
+                    {g.needsReview && <span className="rounded-full bg-[var(--color-brick-tint)] text-[var(--color-brick)] px-2.5 py-0.5 text-xs font-medium">Needs review</span>}
+                    <Link to={`/investments/${g.id}`} className="text-xs text-[var(--color-eucalyptus-dark)] underline hover:no-underline">
+                      Details
+                    </Link>
+                    {!m.closed && (
+                      <span title={sellable && !sellable.canSell ? (sellable.reason ?? undefined) : undefined}>
+                        {/* A filled, dark button — deliberately unlike the pale buttons used for ordinary actions. */}
+                        <button
+                          type="button"
+                          disabled={!sellable?.canSell}
+                          onClick={() => onSell(g.investment)}
+                          aria-label={`Sell ${g.investment.ticker ?? g.investment.name}`}
+                          className="rounded-xl bg-[var(--color-ink)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Sell
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <GroupSummary group={g} />
 
-          {shown.length === 0 ? (
-            <Card>
-              <p className="text-center text-[var(--color-ink-soft)] py-6">No transactions match these filters.</p>
-            </Card>
-          ) : (
-            <>
-              {/* Wide screens: one table. */}
-              <Card className="p-0 overflow-x-auto hidden lg:block">
-                <table className="w-full text-sm min-w-[62rem]">
-                  <thead className="text-left text-xs text-[var(--color-ink-soft)] bg-[var(--color-paper-dim)]">
-                    <tr>
-                      {th("date", "Date", false)}
-                      {th("security", "Security", false)}
-                      {th(null, "Broker account", false)}
-                      {th("type", "Type", false)}
-                      {th(null, "Units")}
-                      {th(null, "Price")}
-                      {th(null, "Brokerage")}
-                      {th("total", "Total value")}
-                      {th("realised", "Realised P&L")}
-                      {th(null, "Units after")}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--color-line)]">
-                    {shown.map((l) => (
-                      <tr key={l.id} className="hover:bg-[var(--color-paper-dim)]">
-                        <td className="px-3 py-3 whitespace-nowrap">{formatDateUtc(l.date)}</td>
-                        <td className="px-3 py-3">{securityCell(l)}</td>
-                        <td className="px-3 py-3 text-[13px]">{brokerCell(l)}</td>
-                        <td className="px-3 py-3">
-                          <TypeBadge type={l.type} />
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums">{formatUnits(l.quantity)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{formatPrice(l.pricePerUnit, l.currency)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{l.brokerage > 0 ? formatLineMoney(l.brokerage, l.currency) : <span className="text-[var(--color-ink-soft)]">—</span>}</td>
-                        <td className="px-3 py-3 text-right tabular-nums font-medium" title={l.type === "BUY" ? "Total cost, including brokerage" : "Net proceeds, after brokerage"}>
-                          {formatLineMoney(l.totalValue, l.currency)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums">
-                          <RealisedCell line={l} />
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums">{l.unitsAfter !== null ? formatUnits(l.unitsAfter) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {open && (
+                  <div id={`sec-${g.id}`} className="border-t border-[var(--color-line)]">
+                    {g.allLines.length === 0 ? (
+                      <p className="px-4 py-4 text-sm text-[var(--color-ink-soft)]">
+                        No buy or sell transactions are recorded for this security{m.units > 0 ? ", so its cost and profit or loss can't be worked out. Record the purchase from Details." : "."}
+                      </p>
+                    ) : g.lines.length === 0 ? (
+                      <p className="px-4 py-4 text-sm text-[var(--color-ink-soft)]">No transactions for this security match the filters.</p>
+                    ) : (
+                      <>
+                        {/* Wide screens: a table, oldest to newest. */}
+                        <div className="hidden lg:block overflow-x-auto">
+                          <table className="w-full text-sm min-w-[60rem]">
+                            <thead className="text-left text-xs text-[var(--color-ink-soft)] bg-[var(--color-paper-dim)]">
+                              <tr>
+                                <th className="px-3 py-2 font-medium">Date</th>
+                                <th className="px-3 py-2 font-medium">Type</th>
+                                <th className="px-3 py-2 font-medium">Broker account</th>
+                                <th className="px-3 py-2 font-medium text-right">Units</th>
+                                <th className="px-3 py-2 font-medium text-right">Price</th>
+                                <th className="px-3 py-2 font-medium text-right">Brokerage</th>
+                                <th className="px-3 py-2 font-medium text-right">Total value</th>
+                                <th className="px-3 py-2 font-medium text-right">Realised P&amp;L</th>
+                                <th className="px-3 py-2 font-medium text-right">Units after</th>
+                                <th className="px-3 py-2 font-medium text-right">
+                                  <span className="sr-only">Actions</span>
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {g.lines.map((l) => (
+                                <Fragment key={l.id}>
+                                  <tr className={`border-t border-[var(--color-line)] border-l-4 ${l.type === "BUY" ? "border-l-[var(--color-sky)]" : "border-l-[var(--color-ochre)]"} hover:bg-[var(--color-paper-dim)]`}>
+                                    <td className="px-3 py-3 whitespace-nowrap">{formatDateUtc(l.date)}</td>
+                                    <td className="px-3 py-3">
+                                      <TypeBadge type={l.type} />
+                                    </td>
+                                    <td className="px-3 py-3 text-[13px]">{brokerCell(l)}</td>
+                                    <td className="px-3 py-3 text-right tabular-nums">{formatUnits(l.quantity)}</td>
+                                    <td className="px-3 py-3 text-right tabular-nums">{formatPrice(l.pricePerUnit, l.currency)}</td>
+                                    <td className="px-3 py-3 text-right tabular-nums">{l.brokerage > 0 ? formatLineMoney(l.brokerage, l.currency) : dash}</td>
+                                    <td className="px-3 py-3 text-right tabular-nums font-medium" title={l.type === "BUY" ? "Total cost, including brokerage" : "Net proceeds, after brokerage"}>
+                                      {formatLineMoney(l.totalValue, l.currency)}
+                                    </td>
+                                    <td className="px-3 py-3 text-right tabular-nums">
+                                      <RealisedCell line={l} />
+                                    </td>
+                                    <td className="px-3 py-3 text-right tabular-nums">{l.unitsAfter !== null ? formatUnits(l.unitsAfter) : dash}</td>
+                                    <td className="px-3 py-3 text-right">{editButton(l, g)}</td>
+                                  </tr>
+                                  {l.type === "SELL" && showMatching && (
+                                    <tr>
+                                      <td colSpan={10} className="px-3 pb-3 pt-0 border-l-4 border-l-[var(--color-ochre)]">
+                                        <SaleMatchBox sell={l} groupLines={g.allLines} currency={g.currency} />
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Tablets and phones: one compact card per transaction. */}
+                        <ul className="lg:hidden divide-y divide-[var(--color-line)]">
+                          {g.lines.map((l) => (
+                            <li key={l.id} className={`p-4 border-l-4 ${l.type === "BUY" ? "border-l-[var(--color-sky)]" : "border-l-[var(--color-ochre)]"}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <TypeBadge type={l.type} />
+                                    <span className="text-sm">{formatDateUtc(l.date)}</span>
+                                  </div>
+                                  <p className="text-xs text-[var(--color-ink-soft)] mt-1">{brokerCell(l)}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs text-[var(--color-ink-soft)]">{l.type === "BUY" ? "Total cost" : "Net proceeds"}</p>
+                                  <p className="font-semibold tabular-nums">{formatLineMoney(l.totalValue, l.currency)}</p>
+                                </div>
+                              </div>
+                              <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-3 text-sm">
+                                <dt className="text-[var(--color-ink-soft)]">Units</dt>
+                                <dd className="text-right tabular-nums">{formatUnits(l.quantity)}</dd>
+                                <dt className="text-[var(--color-ink-soft)]">Price</dt>
+                                <dd className="text-right tabular-nums">{formatPrice(l.pricePerUnit, l.currency)}</dd>
+                                <dt className="text-[var(--color-ink-soft)]">Brokerage</dt>
+                                <dd className="text-right tabular-nums">{l.brokerage > 0 ? formatLineMoney(l.brokerage, l.currency) : "—"}</dd>
+                                <dt className="text-[var(--color-ink-soft)]">Realised P&amp;L</dt>
+                                <dd className="text-right tabular-nums">
+                                  <RealisedCell line={l} />
+                                </dd>
+                                <dt className="text-[var(--color-ink-soft)]">Units after</dt>
+                                <dd className="text-right tabular-nums">{l.unitsAfter !== null ? formatUnits(l.unitsAfter) : "—"}</dd>
+                              </dl>
+                              {l.type === "SELL" && showMatching && (
+                                <div className="mt-3">
+                                  <SaleMatchBox sell={l} groupLines={g.allLines} currency={g.currency} />
+                                </div>
+                              )}
+                              <div className="mt-3 flex justify-end">{editButton(l, g)}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                )}
               </Card>
-
-              {/* Tablets and phones: one compact card per transaction. */}
-              <ul className="space-y-3 lg:hidden">
-                {shown.map((l) => (
-                  <li key={l.id}>
-                    <Card>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <TypeBadge type={l.type} />
-                            {securityCell(l)}
-                          </div>
-                          <p className="text-xs text-[var(--color-ink-soft)] mt-1">{formatDateUtc(l.date)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-[var(--color-ink-soft)]">{l.type === "BUY" ? "Total cost" : "Net proceeds"}</p>
-                          <p className="font-semibold tabular-nums">{formatLineMoney(l.totalValue, l.currency)}</p>
-                        </div>
-                      </div>
-                      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-3 text-sm">
-                        <dt className="text-[var(--color-ink-soft)]">Units</dt>
-                        <dd className="text-right tabular-nums">{formatUnits(l.quantity)}</dd>
-                        <dt className="text-[var(--color-ink-soft)]">Price</dt>
-                        <dd className="text-right tabular-nums">{formatPrice(l.pricePerUnit, l.currency)}</dd>
-                        <dt className="text-[var(--color-ink-soft)]">Brokerage</dt>
-                        <dd className="text-right tabular-nums">{l.brokerage > 0 ? formatLineMoney(l.brokerage, l.currency) : "—"}</dd>
-                        <dt className="text-[var(--color-ink-soft)]">Realised P&amp;L</dt>
-                        <dd className="text-right tabular-nums">
-                          <RealisedCell line={l} />
-                        </dd>
-                        <dt className="text-[var(--color-ink-soft)]">Units after</dt>
-                        <dd className="text-right tabular-nums">{l.unitsAfter !== null ? formatUnits(l.unitsAfter) : "—"}</dd>
-                        <dt className="text-[var(--color-ink-soft)]">Broker account</dt>
-                        <dd className="text-right text-[13px]">{brokerCell(l)}</dd>
-                      </dl>
-                    </Card>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </>
+            );
+          })}
+        </div>
       )}
     </section>
   );

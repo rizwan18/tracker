@@ -1,6 +1,7 @@
 /** Pure helpers for share/ETF holdings that have a dated valuation (from a broker statement or entered by hand). */
 import { D, dec, QTY_EPSILON, type Dec } from "../lib/decimal";
 import { STOCK_TYPES } from "../lib/constants";
+import { computeSale } from "../lib/shareSale";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** UTC calendar day a ledger date falls on. The app records trade dates as whole days (date inputs), so ordering works by day. */
@@ -124,26 +125,126 @@ export function replayLedger<T extends LedgerTx>(txs: readonly T[]): LedgerRepla
 /** One transaction as the Shares & ETFs transactions table shows it. Everything comes from the same replay as the holding totals. */
 export interface TransactionRow {
   id: string;
+  /** Position in the replay (oldest = 0): the one definition of "chronological order", including same-day ties. */
+  seq: number;
+  /**
+   * Which holding period this belongs to: 1 for the first run of purchases, +1 each time the position is bought again after
+   * being sold down to nothing. 0 = a sale made while nothing was held (an exception to review).
+   */
+  period: number;
   /** BUY: units × price + brokerage (what it cost). SELL: units × price − fees (net proceeds). */
   totalValue: number;
   /** Units held straight after this transaction. */
   unitsAfter: number;
   /** SELL only: net proceeds − cost base of the units sold (positive = profit). null for a BUY — not applicable. */
   realisedGainLoss: number | null;
+  /** Units and cost base held immediately BEFORE this transaction (the pool a sale draws its average cost from). */
+  poolQuantityBefore: number;
+  poolCostBefore: number;
+  /** SELL only: the cost base allocated to the units sold (average cost × units). null for a BUY. */
+  costOfSold: number | null;
+  /** SELL only: true when it sells more units than were held at that point — needs review. */
+  shortfall: boolean;
 }
 
 export function transactionRowsOf(txs: readonly (LedgerTx & { id: string })[]): TransactionRow[] {
   const replay = replayLedger(txs);
   const saleOf = new Map(replay.sales.map((s) => [s.tx.id, s]));
-  return replay.steps.map(({ tx, quantityAfter }) => {
+  let prevQty = 0;
+  let prevCost = 0;
+  let period = 0;
+  return replay.steps.map(({ tx, quantityAfter, costBaseAfter }, seq) => {
     const sale = saleOf.get(tx.id);
-    return {
+    if (tx.type === "BUY" && prevQty <= QTY_EPSILON.toNumber()) period += 1;
+    const row: TransactionRow = {
       id: tx.id,
+      seq,
+      period,
       totalValue: sale ? sale.proceeds : dec(tx.quantity).times(dec(tx.pricePerUnit)).plus(dec(tx.brokerage)).toNumber(),
       unitsAfter: quantityAfter,
       realisedGainLoss: sale ? sale.gainLoss : null,
+      poolQuantityBefore: prevQty,
+      poolCostBefore: prevCost,
+      costOfSold: sale ? sale.costOfSold : null,
+      shortfall: sale ? dec(tx.quantity).gt(dec(prevQty).plus(QTY_EPSILON)) : false,
     };
+    prevQty = quantityAfter;
+    prevCost = costBaseAfter;
+    return row;
   });
+}
+
+/** The figures a recorded sale stores (frozen) so its gain/loss never drifts. Same shape and rounding as when the sale is first recorded. */
+export interface SaleSnapshot {
+  grossProceedsCents: number;
+  netProceedsCents: number;
+  costBaseCents: number;
+  gainLossCents: number;
+  costMethod: string;
+}
+
+/**
+ * Recomputes the stored figures of every recorded sale (one that has a snapshot) from the CURRENT buy/sell history, using the
+ * same average-cost step as the Sell action. Call it after any change to a holding's transactions (edit, move) so the stored
+ * cost bases keep adding up: the cost taken out by each sale must always match the pool it was sold from.
+ */
+export function recomputeSaleSnapshots(txs: readonly (LedgerTx & { id: string })[]): Map<string, SaleSnapshot> {
+  const out = new Map<string, SaleSnapshot>();
+  let quantity: Dec = new D(0);
+  let costBase: Dec = new D(0);
+  for (const tx of [...txs].sort(compareLedger)) {
+    const q = dec(tx.quantity);
+    if (tx.type === "BUY") {
+      quantity = quantity.plus(q);
+      costBase = costBase.plus(q.times(dec(tx.pricePerUnit))).plus(dec(tx.brokerage));
+      continue;
+    }
+    let costOfSold: Dec;
+    if (hasSaleSnapshot(tx)) {
+      const f = computeSale({ quantity: q, pricePerShare: dec(tx.pricePerUnit), fees: dec(tx.brokerage), poolQuantity: quantity, poolCostBase: costBase });
+      out.set(tx.id, { grossProceedsCents: f.grossProceedsCents, netProceedsCents: f.netProceedsCents, costBaseCents: f.costBaseCents, gainLossCents: f.gainLossCents, costMethod: f.costMethod });
+      costOfSold = new D(f.costBaseCents).div(100);
+    } else {
+      costOfSold = (quantity.gt(0) ? costBase.div(quantity) : new D(0)).times(q);
+    }
+    quantity = quantity.minus(q);
+    costBase = costBase.minus(costOfSold);
+    if (quantity.isZero()) costBase = new D(0);
+  }
+  return out;
+}
+
+export interface ShortfallCheck {
+  ok: boolean;
+  /** When not ok: which holding (`source` or `target`) would go short, and on what day. */
+  where?: "source" | "target";
+  at?: Date | null;
+}
+
+/**
+ * Would changing transaction `edited` (to `after`, optionally moving it to another holding) leave a holding short of units
+ * that it wasn't short of before? A holding that was already short (old data) may be edited as long as it doesn't get worse.
+ */
+export function checkEditShortfall(args: {
+  sourceHistory: readonly (LedgerTx & { id: string })[];
+  targetHistory?: readonly (LedgerTx & { id: string })[];
+  after: LedgerTx & { id: string };
+  moves: boolean;
+}): ShortfallCheck {
+  const { sourceHistory, targetHistory, after, moves } = args;
+  const worse = (before: readonly LedgerTx[], next: readonly LedgerTx[]) => {
+    const b = lowestRunningQuantity(before).lowest;
+    const n = lowestRunningQuantity(next);
+    return n.lowest.lt(D.min(b, new D(0)).minus(QTY_EPSILON)) ? n : null;
+  };
+  const sourceNext = moves ? sourceHistory.filter((t) => t.id !== after.id) : sourceHistory.map((t) => (t.id === after.id ? after : t));
+  const s = worse(sourceHistory, sourceNext);
+  if (s) return { ok: false, where: "source", at: s.at };
+  if (moves) {
+    const t = worse(targetHistory ?? [], [...(targetHistory ?? []), after]);
+    if (t) return { ok: false, where: "target", at: t.at };
+  }
+  return { ok: true };
 }
 
 /** The lowest number of units held at any point in the (replayed) ledger — negative means a sale exceeded what was held at that time. */

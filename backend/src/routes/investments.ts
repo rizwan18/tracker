@@ -3,9 +3,10 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { z } from "zod";
-import { investmentSchema, investmentTransactionSchema, investmentValuationSchema, investmentInitialTransactionSchema, shareSaleSchema, shareSaleRecordSchema } from "../lib/validation";
+import { investmentSchema, investmentTransactionSchema, investmentTransactionEditSchema, investmentValuationSchema, investmentInitialTransactionSchema, shareSaleSchema, shareSaleRecordSchema } from "../lib/validation";
 import { computeWeightings, computeHoldingSummary, currentValueOf, hasSaleSnapshot, addingLeavesShortfall, removingLeavesShortfall, sellabilityOf, transactionRowsOf, valueHolding, type LatestValuation } from "../services/holdings";
 import { resolveBrokerAccountId } from "../services/brokerAccounts";
+import { editInvestmentTransaction } from "../services/transactionEdits";
 import { previewShareSale, recordShareSale } from "../services/shareSales";
 import { refreshMarketPrices } from "../services/marketPriceRefresh";
 import { isMarketOpen, toMarket } from "../lib/marketHours";
@@ -280,6 +281,17 @@ router.post(
       data: { investmentId: investment.id, ...data, brokerage: data.brokerage ?? 0, brokerAccountId },
     });
     res.status(201).json(tx);
+  })
+);
+
+// Correct any field of a recorded transaction (including which security it belongs to). Holdings, cost base and gains are derived
+// from the history, and the stored sale figures are recomputed in the same database transaction — see services/transactionEdits.ts.
+router.put(
+  "/transactions/:txId",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const householdId = householdOf(req);
+    const input = parseBody(investmentTransactionEditSchema, req.body);
+    res.json(await editInvestmentTransaction(householdId, req.params.txId as string, input));
   })
 );
 

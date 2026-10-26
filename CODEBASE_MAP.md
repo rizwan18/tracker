@@ -17,7 +17,7 @@ backend/            Express + TypeScript REST API, Prisma ORM, Vitest tests
   src/tests/        Vitest suites
 frontend/           React 19 + Vite + Tailwind v4 (oxlint, Vitest)
   src/pages/        one page per screen
-  src/components/   shared UI (ui.tsx primitives, HoldingsTable, PnlSummaryCards, SecurityPriceCheckPanel, ...)
+  src/components/   shared UI (ui.tsx primitives, TransactionsTable, EditTransactionDialog, PnlSummaryCards, SecurityPriceCheckPanel, ...)
   src/lib/          pure helpers (format, holdings, pnl, money, ...)
   src/api/          client.ts (fetch wrapper, ApiError), types.ts
   src/tests/        Vitest suites (pnl, components)
@@ -47,8 +47,8 @@ POST /api/investments/refresh-market-prices    → services/marketPriceRefresh.t
 frontend pages/InvestmentsPage.tsx
    ├─ lib/pnl.ts  summarisePnl()  → components/PnlSummaryCards.tsx   (Realised / Unrealised P&L)
    ├─ components/SecurityPriceCheckPanel.tsx                           (blue "Check Security Price" panel)
-   ├─ components/HoldingsTable.tsx  (uses lib/pnl.ts resolveMarketPosition; units come from the ledger)
-   ├─ components/TransactionsTable.tsx  (one list of buys + sells; rows from `transactionRows`)
+   ├─ components/TransactionsTable.tsx  (ONE table of buys + sells grouped by security; rows from `transactionRows`)
+   └─ components/EditTransactionDialog.tsx  → PUT /investments/transactions/:id → services/transactionEdits.ts
    └─ components/SellSharesDialog.tsx → services/shareSales.ts
 ```
 
@@ -62,8 +62,8 @@ frontend pages/InvestmentsPage.tsx
 |---|---|---|
 | Shares & ETFs screen | `pages/InvestmentsPage.tsx` | `routes/investments.ts` |
 | Realised / Unrealised P&L cards | `components/PnlSummaryCards.tsx`, `lib/pnl.ts` | `services/holdings.ts` (`computeHoldingSummary`) |
-| Holdings table (open + closed, Available units, Sell button) | `components/HoldingsTable.tsx` | `routes/investments.ts` |
-| Unified buy/sell transactions table (filters, sort, mobile cards) | `components/TransactionsTable.tsx`, `lib/transactions.ts` | `services/holdings.ts` (`transactionRowsOf`, same replay as holdings) |
+| One transactions table grouped by security (holding summary per group, Sell button, sale match boxes, filters) | `components/TransactionsTable.tsx`, `lib/transactions.ts` | `services/holdings.ts` (`transactionRowsOf`: seq, holding period, pool before each trade — same replay as holdings) |
+| Edit any transaction (incl. moving it to another security) | `components/EditTransactionDialog.tsx`, `lib/transactions.ts` (`validateTransactionEdit`) | `PUT /api/investments/transactions/:id` in `routes/investments.ts`, `services/transactionEdits.ts`, `lib/validation.ts` (`investmentTransactionEditSchema`), `services/holdings.ts` (`recomputeSaleSnapshots`, `checkEditShortfall`) |
 | Broker accounts (dropdown, add/edit/remove) | `components/BrokerAccountSelect.tsx`, `components/BrokerAccountsManager.tsx`, `lib/brokers.ts`, `lib/useBrokerAccounts.ts` | `routes/brokerAccounts.ts`, `services/brokerAccounts.ts`, `BrokerAccount` model, `InvestmentTransaction.brokerAccountId` |
 | Sell shares | `components/SellSharesDialog.tsx`, `lib/sale.ts` | `services/shareSales.ts`, `lib/shareSale.ts` |
 | Sales by financial year (formerly "View Trades"), route `/investments/realised` | `pages/RealisedTransactionsPage.tsx` | `routes/capitalGains.ts`, `lib/capitalGains.ts` |
