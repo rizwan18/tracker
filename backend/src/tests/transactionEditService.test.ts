@@ -20,6 +20,9 @@ const db = vi.hoisted(() => {
         Object.assign(t, data);
         return { ...t };
       },
+      delete: async ({ where }: Row) => {
+        store.txs = store.txs.filter((x) => x.id !== where.id);
+      },
     },
     investment: {
       findFirst: async ({ where }: Row) => store.investments.find((i) => i.id === where.id && i.householdId === where.householdId) ?? null,
@@ -36,7 +39,7 @@ const db = vi.hoisted(() => {
 });
 vi.mock("../lib/prisma", () => ({ prisma: db.fake }));
 
-import { editInvestmentTransaction } from "../services/transactionEdits";
+import { deleteInvestmentTransaction, editInvestmentTransaction } from "../services/transactionEdits";
 import { replayLedger, transactionRowsOf } from "../services/holdings";
 
 const H = "household-1";
@@ -176,5 +179,40 @@ describe("editInvestmentTransaction", () => {
     await edit();
     expect(JSON.stringify(db.store.txs)).toBe(once);
     expect(db.store.txs).toHaveLength(4);
+  });
+});
+
+describe("deleteInvestmentTransaction", () => {
+  it("deleting a later purchase leaves the earlier sale alone and follows the holding's units", async () => {
+    // Alpha: b1 100 @ 10, s1 sells 40, b2 50 @ 12. Deleting b2 leaves 60 units; the sale came before b2.
+    await deleteInvestmentTransaction(H, "b2");
+    expect(db.store.txs.some((t) => t.id === "b2")).toBe(false);
+    expect(replayLedger(history("A")).quantity).toBe(60);
+    expect(db.store.valuations[0]!.units).toBe(60);
+    expect(tx("s1")).toMatchObject({ costBaseCents: 40000, gainLossCents: 20000 });
+  });
+  it("deleting an earlier purchase re-freezes a later sale's stored figures against the new pool", async () => {
+    // A bad extra purchase (100 @ 20) sits before the sale, so the sale's stored figures were frozen against a 200-unit pool
+    // averaging $15: 40 units cost $600, a $0 result. Deleting it must put them back to the 100 @ $10 pool: $400 cost, $200 gain.
+    db.store.txs.unshift(mk("bad", "A", "BUY", "2025-12-01", 100, 20));
+    Object.assign(tx("s1"), { costBaseCents: 60000, gainLossCents: 0 });
+    await deleteInvestmentTransaction(H, "bad");
+    expect(tx("s1")).toMatchObject({ costBaseCents: 40000, gainLossCents: 20000, netProceedsCents: 60000 });
+  });
+  it("deleting a recorded sale gives the units back", async () => {
+    await deleteInvestmentTransaction(H, "s1");
+    expect(tx("s1")).toBeUndefined();
+    expect(replayLedger(history("A")).quantity).toBe(150);
+    expect(db.store.valuations[0]!.units).toBe(150);
+  });
+  it("refuses to delete a purchase a later sale relies on, changing nothing", async () => {
+    const before = structuredClone({ txs: db.store.txs, vals: db.store.valuations });
+    await expect(deleteInvestmentTransaction(H, "b1")).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/later sale relies/) });
+    expect({ txs: db.store.txs, vals: db.store.valuations }).toEqual(before);
+  });
+  it("404s for a missing transaction and for another household's", async () => {
+    await expect(deleteInvestmentTransaction(H, "nope")).rejects.toMatchObject({ status: 404 });
+    await expect(deleteInvestmentTransaction(H, "o1")).rejects.toMatchObject({ status: 404 });
+    expect(tx("o1")).toBeDefined();
   });
 });

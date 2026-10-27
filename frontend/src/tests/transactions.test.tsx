@@ -318,7 +318,7 @@ describe("editing a transaction", () => {
   });
 
   const line = lines.find((l) => l.id === "t2")!;
-  const dialog = render(<EditTransactionDialog line={line} securities={[{ id: "a", label: "TST — Test Co", currency: "AUD" }, { id: "b", label: "XYZ — Xyz Ltd", currency: "AUD" }]} onSaved={() => {}} onClose={() => {}} />);
+  const dialog = render(<EditTransactionDialog line={line} securities={[{ id: "a", label: "TST — Test Co", currency: "AUD" }, { id: "b", label: "XYZ — Xyz Ltd", currency: "AUD" }]} onSaved={() => {}} onDeleted={() => {}} onClose={() => {}} />);
   it("opens pre-filled with every editable field, and Save/Cancel", () => {
     for (const id of ["et-security", "et-date", "et-type", "et-qty", "et-price", "et-fees", "et-broker"]) expect(dialog).toContain(`id="${id}"`);
     expect(dialog).toContain('value="2026-03-01"');
@@ -326,6 +326,11 @@ describe("editing a transaction", () => {
     expect(dialog).toContain('value="15"');
     expect(dialog).toContain("Cancel");
     expect(dialog).toContain("Save changes");
+  });
+  it("offers Delete transaction, and only asks to confirm after it is clicked (nothing is deleted from the form itself)", () => {
+    expect(dialog).toContain("Delete transaction");
+    expect(dialog).not.toContain("Yes, delete it");
+    expect(dialog.match(/<button[^>]*>\s*Delete transaction\s*<\/button>/)![0]).toContain('type="button"');
   });
   it("starts with Save disabled until something is changed (no accidental no-op saves)", () => {
     expect(dialog.match(/<button[^>]*type="submit"[^>]*>/)![0]).toContain('disabled=""');

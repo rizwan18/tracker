@@ -52,7 +52,7 @@ frontend pages/InvestmentsPage.tsx
    └─ components/SellSharesDialog.tsx → services/shareSales.ts
 ```
 
-**Accounting method:** average cost across everything held at the sale date; brokerage is added to a buy's cost and deducted from a sale's proceeds. Recorded sales store frozen figures that are never recalculated.
+**Accounting method:** average cost across everything held at the sale date; brokerage is added to a buy's cost and deducted from a sale's proceeds. Recorded sales store frozen figures; they are re-frozen against the new history whenever a transaction is edited or deleted (`services/transactionEdits.ts`).
 
 **Currencies:** ASX holdings are A$; Wall St holdings are US$. There is no FX conversion anywhere, so totals must not mix them (the P&L cards keep them separate).
 

@@ -17,7 +17,7 @@ export interface EditableSecurity {
  * Saved to the database, where holdings, cost base and gains are recomputed. If saving fails, everything the person typed is
  * kept and the reason is shown; the Save button is disabled while a save is in flight so it can't be submitted twice.
  */
-export function EditTransactionDialog({ line, securities, onSaved, onClose }: { line: TransactionLine; securities: EditableSecurity[]; onSaved: () => void; onClose: () => void }) {
+export function EditTransactionDialog({ line, securities, onSaved, onDeleted, onClose }: { line: TransactionLine; securities: EditableSecurity[]; onSaved: () => void; onDeleted: () => void; onClose: () => void }) {
   const [investmentId, setInvestmentId] = useState(line.investmentId);
   const [date, setDate] = useState(line.date.slice(0, 10));
   const [type, setType] = useState<"BUY" | "SELL">(line.type);
@@ -28,6 +28,9 @@ export function EditTransactionDialog({ line, securities, onSaved, onClose }: { 
   const [errors, setErrors] = useState<Errors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const busy = saving || deleting;
 
   const currency = securities.find((s) => s.id === investmentId)?.currency ?? line.currency;
   const q = Number(quantity);
@@ -45,7 +48,7 @@ export function EditTransactionDialog({ line, securities, onSaved, onClose }: { 
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (saving) return;
+    if (busy) return;
     const found = validateTransactionEdit({ investmentId, date, quantity, price, brokerage });
     setErrors(found);
     setServerError(null);
@@ -62,6 +65,24 @@ export function EditTransactionDialog({ line, securities, onSaved, onClose }: { 
     }
   }
 
+  /** Removes the transaction. Holdings, cost base and gains are recomputed on the server; a purchase that a later sale relies on is refused. */
+  async function remove() {
+    if (busy) return;
+    setServerError(null);
+    setDeleting(true);
+    try {
+      await api.delete(`/investments/transactions/${line.id}`);
+      onDeleted();
+    } catch (e) {
+      setConfirmingDelete(false);
+      setServerError(e instanceof ApiError ? e.message : "We couldn't delete this transaction. Nothing was changed — please check your connection and try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const securityName = securities.find((x) => x.id === line.investmentId)?.label ?? "this security";
+
   const err = (m?: string) =>
     m ? (
       <p role="alert" className="text-xs text-[var(--color-brick)] mt-1">
@@ -70,7 +91,7 @@ export function EditTransactionDialog({ line, securities, onSaved, onClose }: { 
     ) : null;
 
   return (
-    <Modal title="Edit transaction" onClose={saving ? () => undefined : onClose}>
+    <Modal title="Edit transaction" onClose={busy ? () => undefined : onClose}>
       <form onSubmit={save} className="space-y-4" noValidate>
         <Field label="Security" htmlFor="et-security">
           <select id="et-security" className={inputClass} value={investmentId} onChange={(e) => setInvestmentId(e.target.value)}>
@@ -127,14 +148,45 @@ export function EditTransactionDialog({ line, securities, onSaved, onClose }: { 
             {serverError}
           </p>
         )}
-        <div className="flex justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={saving || !changed}>
-            {saving ? "Saving…" : "Save changes"}
-          </Button>
-        </div>
+        {confirmingDelete ? (
+          <div role="alertdialog" aria-label="Confirm delete" className="rounded-xl border border-[var(--color-brick)] bg-[var(--color-brick-tint)] p-4 space-y-3">
+            <p className="text-sm">
+              Delete this {line.type === "BUY" ? "buy" : "sell"} of {line.quantity} units of <strong>{securityName}</strong> on {line.date.slice(0, 10)}? The holding, its cost base and the realised and unrealised profit or loss are recalculated without it. This can't be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                Keep it
+              </Button>
+              <button
+                type="button"
+                onClick={() => void remove()}
+                disabled={deleting}
+                className="rounded-xl bg-[var(--color-brick)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {deleting ? "Deleting…" : "Yes, delete it"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={busy}
+              className="rounded-xl border border-[var(--color-brick)] px-4 py-2 text-sm font-medium text-[var(--color-brick)] hover:bg-[var(--color-brick-tint)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Delete transaction
+            </button>
+            <div className="flex gap-3">
+              <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy || !changed}>
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+            </div>
+          </div>
+        )}
       </form>
     </Modal>
   );

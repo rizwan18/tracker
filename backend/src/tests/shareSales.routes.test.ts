@@ -56,11 +56,21 @@ const h = vi.hoisted(() => {
           state.txs.push(row);
           return clone(row);
         },
+        update: async ({ where, data }: Row) => {
+          onWrite();
+          const t = state.txs.find((x) => x.id === where.id)!;
+          Object.assign(t, data);
+          return clone(t);
+        },
         delete: async ({ where }: Row) => { state.txs = state.txs.filter((t) => t.id !== where.id); },
       },
       investmentValuation: {
         findFirst: async ({ where }: Row) => clone(state.vals.filter((v) => matches(v, where)).sort((a, b) => b.asAt - a.asAt)[0] ?? null),
         findMany: async () => [],
+        update: async ({ where, data }: Row) => {
+          onWrite();
+          return Object.assign(state.vals.find((v) => v.id === where.id)!, data);
+        },
         upsert: async ({ where, create, update }: Row) => {
           onWrite();
           const k = where.investmentId_asAt;
@@ -411,20 +421,36 @@ describe("POST /investments/:id/sales/preview", () => {
   });
 });
 
-describe("recorded sales are permanent; existing behaviour is untouched", () => {
-  it("a sale recorded with the Sell action can't be deleted", async () => {
+describe("deleting a transaction to fix a mistake; existing behaviour is untouched", () => {
+  it("a sale recorded with the Sell action can be deleted, and the holding gets its units back", async () => {
     seed();
     const sale = (await call("POST", "/investments/inv1/sales", sellBody())).body.sale;
     const r = await call("DELETE", `/investments/transactions/${sale.id}`);
+    expect(r.status).toBe(200);
+    expect(h.state.txs.some((t) => t.id === sale.id)).toBe(false);
+    // the SALE valuation tracked the history (150 units after selling 50 of 200), so it follows back to 200
+    expect(h.state.vals.find((v) => v.source === "SALE")!.units).toBe(200);
+  });
+  it("a purchase that a later sale relies on can't be deleted, and nothing changes", async () => {
+    seed();
+    await call("POST", "/investments/inv1/sales", sellBody());
+    const before = structuredClone({ txs: h.state.txs, vals: h.state.vals });
+    const r = await call("DELETE", "/investments/transactions/buy1");
     expect(r.status).toBe(409);
-    expect(r.body.error).toMatch(/can't be deleted/);
-    expect(h.state.txs.some((t) => t.id === sale.id)).toBe(true);
+    expect(r.body.error).toMatch(/later sale relies/);
+    expect({ txs: h.state.txs, vals: h.state.vals }).toEqual(before);
   });
   it("older SELL rows and purchases can still be deleted as before", async () => {
     seed();
     h.state.txs.push({ id: "old", investmentId: "inv1", type: "SELL", date: new Date("2025-07-01T00:00:00Z"), quantity: 5, pricePerUnit: 11, brokerage: 0, createdAt: new Date(), grossProceedsCents: null, netProceedsCents: null, costBaseCents: null, gainLossCents: null, clientRequestId: null });
     expect((await call("DELETE", "/investments/transactions/old")).status).toBe(200);
     expect((await call("DELETE", "/investments/transactions/buy1")).status).toBe(200);
+  });
+  it("404s for a transaction that isn't there or belongs to another household", async () => {
+    seed();
+    expect((await call("DELETE", "/investments/transactions/nope")).status).toBe(404);
+    const r = await fetch(`${base}/investments/transactions/buy1`, { method: "DELETE", headers: { "x-test-household": "someone-else" } });
+    expect(r.status).toBe(404);
   });
   it("legacy SELL rows still produce the same realised figures in the Capital Gains report", async () => {
     seed();

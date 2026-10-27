@@ -15,7 +15,7 @@ import { STOCK_TYPES } from "../lib/constants";
 import { QTY_EPSILON } from "../lib/decimal";
 import type { InvestmentTransactionEditInput } from "../lib/validation";
 import { resolveBrokerAccountId } from "./brokerAccounts";
-import { checkEditShortfall, recomputeSaleSnapshots, replayLedger, type LedgerTx } from "./holdings";
+import { checkEditShortfall, recomputeSaleSnapshots, removingLeavesShortfall, replayLedger, type LedgerTx } from "./holdings";
 
 type Db = Prisma.TransactionClient;
 const isStock = (type: string) => (STOCK_TYPES as readonly string[]).includes(type);
@@ -109,6 +109,40 @@ export async function editInvestmentTransaction(householdId: string, txId: strin
         await syncValuationUnits(db, id, id === sourceId ? quantityBefore.source : quantityBefore.target, after);
       }
       return { id: txId, investmentId: targetId };
+    },
+    { timeout: 20000 }
+  );
+}
+
+/**
+ * Deleting a transaction to fix bad data. Like an edit, everything that depends on it is recomputed in the same database
+ * transaction: sale figures frozen on later recorded sales are re-frozen against the new history, and a holding's recorded
+ * units follow when they were tracking the history. Any transaction can be deleted, including a recorded sale (an edit can
+ * already rewrite one), except a purchase that a later sale relies on: that would leave the holding short of units, so it is
+ * refused and nothing is changed.
+ */
+export async function deleteInvestmentTransaction(householdId: string, txId: string): Promise<{ id: string; investmentId: string }> {
+  return prisma.$transaction(
+    async (db) => {
+      const existing = await db.investmentTransaction.findFirst({ where: { id: txId, investment: { householdId } } });
+      if (!existing) throw new FriendlyError("We couldn't find this transaction.", 404);
+      const investmentId = existing.investmentId;
+
+      // Same row lock as an edit or a sale, so a delete never interleaves with one on the same holding.
+      await db.investment.updateMany({ where: { id: investmentId, householdId }, data: { updatedAt: new Date() } });
+
+      const before = await historyOf(db, investmentId);
+      if (removingLeavesShortfall(before, existing.id)) {
+        throw new FriendlyError("This purchase can't be removed because a later sale relies on those units. Remove or change that sale first.", 409);
+      }
+      const quantityBefore = replayLedger(before).quantity;
+
+      await db.investmentTransaction.delete({ where: { id: txId } });
+
+      await refreezeSales(db, investmentId);
+      const after = replayLedger(await historyOf(db, investmentId)).quantity;
+      await syncValuationUnits(db, investmentId, quantityBefore, after);
+      return { id: txId, investmentId };
     },
     { timeout: 20000 }
   );

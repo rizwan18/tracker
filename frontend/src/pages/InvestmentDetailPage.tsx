@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import type { Investment } from "../api/types";
 import { Button, Card, SectionHeading, StatTile, HelpText } from "../components/ui";
 import { Modal } from "../components/Modal";
@@ -40,8 +40,13 @@ export default function InvestmentDetailPage() {
   useEffect(load, [load]);
 
   async function handleDeleteTx(txId: string) {
-    if (!confirm("Remove this transaction?")) return;
-    await api.delete(`/investments/transactions/${txId}`);
+    if (!confirm("Remove this transaction? The holding, cost base and profit or loss are recalculated without it. This can't be undone.")) return;
+    try {
+      await api.delete(`/investments/transactions/${txId}`);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "We couldn't remove this transaction. Nothing was changed.");
+      return;
+    }
     load();
   }
 
@@ -117,15 +122,9 @@ export default function InvestmentDetailPage() {
                             )}
                           </div>
                         </div>
-                        {recorded ? (
-                          <span className="text-xs text-[var(--color-ink-soft)] shrink-0" title="A recorded sale is a permanent record and can't be deleted.">
-                            Recorded sale
-                          </span>
-                        ) : (
-                          <button onClick={() => handleDeleteTx(tx.id)} className="text-xs text-[var(--color-brick)] hover:underline shrink-0">
-                            Delete
-                          </button>
-                        )}
+                        <button onClick={() => handleDeleteTx(tx.id)} className="text-xs text-[var(--color-brick)] hover:underline shrink-0">
+                          Delete
+                        </button>
                       </li>
                     );
                   })}

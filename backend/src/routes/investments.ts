@@ -4,9 +4,9 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { asyncHandler, FriendlyError } from "../middleware/errorHandler";
 import { z } from "zod";
 import { investmentSchema, investmentTransactionSchema, investmentTransactionEditSchema, investmentValuationSchema, investmentInitialTransactionSchema, shareSaleSchema, shareSaleRecordSchema } from "../lib/validation";
-import { computeWeightings, computeHoldingSummary, currentValueOf, hasSaleSnapshot, addingLeavesShortfall, removingLeavesShortfall, sellabilityOf, transactionRowsOf, valueHolding, type LatestValuation } from "../services/holdings";
+import { computeWeightings, computeHoldingSummary, currentValueOf, addingLeavesShortfall, sellabilityOf, transactionRowsOf, valueHolding, type LatestValuation } from "../services/holdings";
 import { resolveBrokerAccountId } from "../services/brokerAccounts";
-import { editInvestmentTransaction } from "../services/transactionEdits";
+import { deleteInvestmentTransaction, editInvestmentTransaction } from "../services/transactionEdits";
 import { previewShareSale, recordShareSale } from "../services/shareSales";
 import { refreshMarketPrices } from "../services/marketPriceRefresh";
 import { isMarketOpen, toMarket } from "../lib/marketHours";
@@ -295,23 +295,13 @@ router.put(
   })
 );
 
+// Delete a transaction to fix bad data. Recorded sales can be deleted too; a purchase that a later sale relies on can't.
+// Dependent figures are recomputed in the same database transaction — see services/transactionEdits.ts.
 router.delete(
   "/transactions/:txId",
   asyncHandler(async (req: AuthedRequest, res) => {
     const householdId = householdOf(req);
-    const tx = await prisma.investmentTransaction.findFirst({
-      where: { id: req.params.txId, investment: { householdId } },
-    });
-    if (!tx) throw new FriendlyError("We couldn't find this transaction.", 404);
-    // A sale recorded with the Sell action is a permanent record: deleting it would quietly rewrite realised gains and
-    // leave the holding's units out of step. (Older SELL rows entered by hand can still be removed as before.)
-    if (hasSaleSnapshot(tx)) throw new FriendlyError("A recorded share sale can't be deleted, because that would change your realised gains history.", 409);
-    // Removing a purchase that later sales rely on would leave a negative holding.
-    const history = await prisma.investmentTransaction.findMany({ where: { investmentId: tx.investmentId } });
-    if (removingLeavesShortfall(history, tx.id)) {
-      throw new FriendlyError("This purchase can't be removed because a later sale relies on those units. Remove or change that sale first.", 409);
-    }
-    await prisma.investmentTransaction.delete({ where: { id: tx.id } });
+    await deleteInvestmentTransaction(householdId, req.params.txId as string);
     res.json({ message: "Transaction removed." });
   })
 );

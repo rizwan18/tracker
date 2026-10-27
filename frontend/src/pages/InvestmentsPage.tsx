@@ -224,6 +224,11 @@ export default function InvestmentsPage() {
             load();
             reloadAccounts();
           }}
+          onDeleted={() => {
+            setEditTarget(null);
+            load();
+            reloadAccounts();
+          }}
         />
       )}
 

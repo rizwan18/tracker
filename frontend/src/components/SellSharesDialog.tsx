@@ -218,7 +218,7 @@ export function SellSharesDialog({ investment, onCancel, onFinished }: { investm
 
       {step === "review" && preview && (
         <div className="space-y-4">
-          <p className="text-sm text-[var(--color-ink-soft)]">Check these figures. Once you confirm, the sale is permanently recorded and can't be deleted.</p>
+          <p className="text-sm text-[var(--color-ink-soft)]">Check these figures. Once you confirm, the sale is added to your history. If something is wrong later, you can edit or delete it from the transactions list.</p>
           <dl className="divide-y divide-[var(--color-line)] rounded-xl border border-[var(--color-line)] px-4">
             {row("Asset", `${investment.name}${investment.ticker ? ` (${investment.ticker})` : ""}`)}
             {row("Sale date", formatDate(preview.saleDate))}
