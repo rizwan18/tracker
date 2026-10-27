@@ -165,8 +165,10 @@ export interface SecurityGroup {
 }
 
 /**
- * One group per share/ETF/LIC, holdings first (A–Z) then fully sold ones (A–Z). A security with no transactions yet still
- * gets its group, so a holding recorded only from a statement doesn't disappear from the screen.
+ * One group per share/ETF/LIC, ordered by security code (A–Z) so every transaction of one security sits together and the
+ * securities follow each other in code order; a fully sold security keeps its place (its "Position closed" badge says so).
+ * Holdings with no code come last, A–Z by name. A security with no transactions yet still gets its group, so a holding
+ * recorded only from a statement doesn't disappear from the screen.
  */
 export function groupBySecurity(investments: Investment[], lines: TransactionLine[], filters: TransactionFilters = NO_FILTERS): SecurityGroup[] {
   const byInvestment = new Map<string, TransactionLine[]>();
@@ -187,7 +189,15 @@ export function groupBySecurity(investments: Investment[], lines: TransactionLin
   });
   return groups
     .filter((g) => !filtering || g.lines.length > 0)
-    .sort((a, b) => Number(a.metrics.closed) - Number(b.metrics.closed) || a.label.localeCompare(b.label));
+    .sort(bySecurityCode);
+}
+
+/** Security code A–Z (case-insensitive); holdings without a code after those that have one, then by name. */
+export function bySecurityCode(a: { investment: { ticker: string | null; name: string } }, b: { investment: { ticker: string | null; name: string } }): number {
+  const ta = a.investment.ticker?.trim().toUpperCase() ?? "";
+  const tb = b.investment.ticker?.trim().toUpperCase() ?? "";
+  if (!ta !== !tb) return ta ? -1 : 1;
+  return ta.localeCompare(tb) || a.investment.name.localeCompare(b.investment.name);
 }
 
 /** How a sale's figures were reached, for checking against the purchases. */

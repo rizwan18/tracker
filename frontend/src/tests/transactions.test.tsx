@@ -94,7 +94,12 @@ describe("grouping by security", () => {
     expect(groups[0]!.lines.map((l) => l.id)).toEqual(["t1", "t2"]);
     expect(groups[1]!.lines.map((l) => l.id)).toEqual(["t3", "t4"]);
   });
-  it("lists holdings before fully sold securities", () => {
+  it("orders securities by code A–Z, whether held or fully sold, with every transaction of one code together", () => {
+    const abc = inv({ id: "c", name: "Abc Ltd", ticker: "abc", txs: [], summary: { ...xyz.summary } }); // closed, lower-case code
+    const noCode = inv({ id: "n", name: "Unlisted Co", ticker: null, txs: [], summary: { ...tst.summary } });
+    const order = groupBySecurity([noCode, xyz, tst, abc], buildTransactionLines([noCode, xyz, tst, abc])).map((g) => g.investment.ticker);
+    expect(order).toEqual(["abc", "TST", "XYZ", null]);
+    // the sold-out XYZ sits after the held TST only because of its code, and a sold-out ABC comes before it
     expect(groupBySecurity([xyz, tst], lines).map((g) => g.metrics.closed)).toEqual([false, true]);
   });
   it("covers every transaction exactly once across all groups", () => {

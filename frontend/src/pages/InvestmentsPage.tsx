@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { Investment } from "../api/types";
-import { Button, Card, EmptyState, SectionHeading } from "../components/ui";
+import { Button, Card, EmptyState, SectionHeading, TabPanel, Tabs } from "../components/ui";
 import { Modal } from "../components/Modal";
 import { InvestmentForm } from "../components/InvestmentForm";
 import { SellSharesDialog } from "../components/SellSharesDialog";
@@ -32,7 +32,17 @@ const TYPE_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
+type InvestmentsTab = "holdings" | "prices";
+const TABS: Array<{ id: InvestmentsTab; label: string }> = [
+  { id: "holdings", label: "Holdings and transactions" },
+  { id: "prices", label: "Check security price" },
+];
+
 export default function InvestmentsPage() {
+  // The tab lives in the URL (?tab=prices) so it can be linked to, and the lookup page can return to it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab: InvestmentsTab = searchParams.get("tab") === "prices" ? "prices" : "holdings";
+  const changeTab = (next: InvestmentsTab) => setSearchParams(next === "holdings" ? {} : { tab: next }, { replace: true });
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -151,56 +161,66 @@ export default function InvestmentsPage() {
         </div>
       )}
 
-      <SecurityPriceCheckPanel
-        state={priceCheck}
-        busy={refreshing}
-        onRefresh={() => void refreshPrices(true)}
-        latestPriceAt={latestPriceAt}
-        unpricedCount={unpricedCount}
-        noTickerCount={noTickerCount}
-      />
+      <Tabs tabs={TABS} active={tab} onChange={changeTab} />
 
-      {loading ? (
-        <p className="text-[var(--color-ink-soft)]">Loading…</p>
-      ) : investments.length === 0 ? (
-        <EmptyState
-          title="No investments yet"
-          description="Track shares, ETFs and other investments in one place."
-          action={<Button onClick={() => setShowForm(true)}>Add investment</Button>}
-        />
-      ) : (
-        <div className="space-y-8">
-          {allStocks.length > 0 && <TransactionsTable investments={investments} lines={transactionLines} accounts={accounts} onSell={setSellTarget} onEdit={setEditTarget} />}
+      {/* Both panels stay mounted and the inactive one is only hidden, so the transaction filters and collapsed groups survive a trip to the other tab. */}
+      <div hidden={tab !== "holdings"}>
+        <TabPanel id="holdings">
+        {loading ? (
+          <p className="text-[var(--color-ink-soft)]">Loading…</p>
+        ) : investments.length === 0 ? (
+          <EmptyState
+            title="No investments yet"
+            description="Track shares, ETFs and other investments in one place."
+            action={<Button onClick={() => setShowForm(true)}>Add investment</Button>}
+          />
+        ) : (
+          <div className="space-y-8">
+            {allStocks.length > 0 && <TransactionsTable investments={investments} lines={transactionLines} accounts={accounts} onSell={setSellTarget} onEdit={setEditTarget} />}
 
-          {others.length > 0 && (
-            <section>
-              <h3 className="font-display text-lg font-semibold mb-2">Other investments</h3>
-              <Card className="p-0 overflow-hidden">
-                <ul className="divide-y divide-[var(--color-line)]">
-                  {others.map((inv) => (
-                    <li key={inv.id}>
-                      <Link to={`/investments/${inv.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-[var(--color-paper-dim)]">
-                        <div>
-                          <p className="font-medium text-[var(--color-ink)]">
-                            {inv.name} {inv.ticker && <span className="text-[var(--color-ink-soft)] font-normal">({inv.ticker})</span>}
-                          </p>
-                          <p className="text-xs text-[var(--color-ink-soft)]">{TYPE_LABELS[inv.type] ?? inv.type}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium">{formatCurrency(inv.summary.currentValue)}</p>
-                          {inv.summary.costBaseKnown !== false && (
-                            <p className={`text-xs ${inv.summary.unrealisedGainLoss >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}`}>{formatCurrencySigned(inv.summary.unrealisedGainLoss)}</p>
-                          )}
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </section>
-          )}
-        </div>
-      )}
+            {others.length > 0 && (
+              <section>
+                <h3 className="font-display text-lg font-semibold mb-2">Other investments</h3>
+                <Card className="p-0 overflow-hidden">
+                  <ul className="divide-y divide-[var(--color-line)]">
+                    {others.map((inv) => (
+                      <li key={inv.id}>
+                        <Link to={`/investments/${inv.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-[var(--color-paper-dim)]">
+                          <div>
+                            <p className="font-medium text-[var(--color-ink)]">
+                              {inv.name} {inv.ticker && <span className="text-[var(--color-ink-soft)] font-normal">({inv.ticker})</span>}
+                            </p>
+                            <p className="text-xs text-[var(--color-ink-soft)]">{TYPE_LABELS[inv.type] ?? inv.type}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-medium">{formatCurrency(inv.summary.currentValue)}</p>
+                            {inv.summary.costBaseKnown !== false && (
+                              <p className={`text-xs ${inv.summary.unrealisedGainLoss >= 0 ? "text-[var(--color-eucalyptus)]" : "text-[var(--color-brick)]"}`}>{formatCurrencySigned(inv.summary.unrealisedGainLoss)}</p>
+                            )}
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </section>
+            )}
+          </div>
+        )}
+        </TabPanel>
+      </div>
+      <div hidden={tab !== "prices"}>
+        <TabPanel id="prices">
+          <SecurityPriceCheckPanel
+            state={priceCheck}
+            busy={refreshing}
+            onRefresh={() => void refreshPrices(true)}
+            latestPriceAt={latestPriceAt}
+            unpricedCount={unpricedCount}
+            noTickerCount={noTickerCount}
+          />
+        </TabPanel>
+      </div>
 
       {sellTarget && (
         <SellSharesDialog
