@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { BrokerAccount, Investment } from "../api/types";
 import { Button, Card, inputClass } from "./ui";
@@ -11,7 +11,6 @@ import {
   formatLineMoney,
   groupBySecurity,
   hasActiveFilters,
-  matchSale,
   type SecurityGroup,
   type TransactionFilters,
   type TransactionLine,
@@ -54,71 +53,11 @@ export function Signed({ amount, currency, bold = true }: { amount: number; curr
   );
 }
 
-/**
- * How one sale's figures were reached, set directly under the sale so the purchases and the sale can be compared.
- * The cost-basis method is average cost: a sale takes the pooled average of everything held at that moment, so it is matched
- * to the purchases in its holding period rather than to one purchase. Nothing is assigned by guesswork.
- */
-export function SaleMatchBox({ sell, groupLines, currency }: { sell: TransactionLine; groupLines: TransactionLine[]; currency: Currency }) {
-  const m = matchSale(sell, groupLines);
-  return (
-    <div className="rounded-xl border border-[var(--color-line)] border-l-4 border-l-[var(--color-ochre)] bg-[var(--color-paper-dim)] p-3 text-sm" data-testid="sale-match">
-      {m.shortfall && (
-        <p role="alert" className="mb-2 rounded-lg bg-[var(--color-brick-tint)] px-3 py-2 text-[var(--color-brick)] font-medium">
-          Needs review: this sale is for {formatUnits(sell.quantity)} units but only {formatUnits(m.poolQuantity)} were held on that date. Correct the sale, or add the missing purchase.
-        </p>
-      )}
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <p className="text-xs font-medium text-[var(--color-ink-soft)] mb-1">Purchases this sale draws on</p>
-          {m.buys.length === 0 ? (
-            <p className="text-[var(--color-ink-soft)]">No earlier purchases found for this sale.</p>
-          ) : (
-            <table className="w-full text-xs">
-              <thead className="text-left text-[var(--color-ink-soft)]">
-                <tr>
-                  <th className="font-medium pb-1">Bought</th>
-                  <th className="font-medium pb-1 text-right">Units</th>
-                  <th className="font-medium pb-1 text-right">Price</th>
-                  <th className="font-medium pb-1 text-right">Cost incl. brokerage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {m.buys.map((b) => (
-                  <tr key={b.id}>
-                    <td className="py-0.5">{formatDateUtc(b.date)}</td>
-                    <td className="py-0.5 text-right tabular-nums">{formatUnits(b.quantity)}</td>
-                    <td className="py-0.5 text-right tabular-nums">{formatPrice(b.pricePerUnit, currency)}</td>
-                    <td className="py-0.5 text-right tabular-nums">{formatLineMoney(b.totalValue, currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <p className="text-xs text-[var(--color-ink-soft)] mt-2">Average-cost method: the pool at the time of the sale was {formatUnits(m.poolQuantity)} units costing {formatLineMoney(m.poolCost, currency)}{m.avgCost !== null ? `, an average of ${formatPrice(m.avgCost, currency)} per unit` : ""}. Earlier sales have already taken their share out of it.</p>
-        </div>
-        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 content-start">
-          <dt className="text-[var(--color-ink-soft)]">Sold</dt>
-          <dd className="text-right tabular-nums">
-            {formatUnits(m.unitsSold)} × {formatPrice(sell.pricePerUnit, currency)}
-          </dd>
-          <dt className="text-[var(--color-ink-soft)]">Net proceeds (after brokerage)</dt>
-          <dd className="text-right tabular-nums">{formatLineMoney(m.netProceeds, currency)}</dd>
-          <dt className="text-[var(--color-ink-soft)]">Cost of the units sold</dt>
-          <dd className="text-right tabular-nums">{m.costOfSold !== null ? formatLineMoney(m.costOfSold, currency) : "—"}</dd>
-          <dt className="font-medium">Realised profit / loss</dt>
-          <dd className="text-right tabular-nums font-semibold">{m.realised !== null ? <Signed amount={m.realised} currency={currency} /> : "—"}</dd>
-        </dl>
-      </div>
-    </div>
-  );
-}
-
 function Metric({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wide text-[var(--color-ink-soft)]">{label}</dt>
-      <dd className="text-sm font-medium tabular-nums mt-0.5">{children}</dd>
+      <dt className="sr-only">{label}</dt>
+      <dd className="text-sm font-medium tabular-nums">{children}</dd>
     </div>
   );
 }
@@ -183,7 +122,6 @@ export function TransactionsTable({
 }) {
   const [filters, setFilters] = useState<TransactionFilters>(NO_FILTERS);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [showMatching, setShowMatching] = useState(true);
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const groups = useMemo(() => groupBySecurity(investments, lines, filters), [investments, lines, filters]);
   const allGroups = useMemo(() => groupBySecurity(investments, lines), [investments, lines]);
@@ -268,10 +206,6 @@ export function TransactionsTable({
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={showMatching} onChange={(e) => setShowMatching(e.target.checked)} />
-            Show how each sale was calculated
-          </label>
           <Button size="sm" variant="ghost" onClick={() => setCollapsed(new Set())}>
             Expand all
           </Button>
@@ -370,8 +304,7 @@ export function TransactionsTable({
                             </thead>
                             <tbody>
                               {g.lines.map((l) => (
-                                <Fragment key={l.id}>
-                                  <tr className={`border-t border-[var(--color-line)] border-l-4 ${l.type === "BUY" ? "border-l-[var(--color-sky)]" : "border-l-[var(--color-ochre)]"} hover:bg-[var(--color-paper-dim)]`}>
+                                <tr key={l.id} className={`border-t border-[var(--color-line)] border-l-4 ${l.type === "BUY" ? "border-l-[var(--color-sky)]" : "border-l-[var(--color-ochre)]"} hover:bg-[var(--color-paper-dim)]`}>
                                     <td className="px-3 py-3 whitespace-nowrap">{formatDateUtc(l.date)}</td>
                                     <td className="px-3 py-3">
                                       <TypeBadge type={l.type} />
@@ -389,14 +322,6 @@ export function TransactionsTable({
                                     <td className="px-3 py-3 text-right tabular-nums">{l.unitsAfter !== null ? formatUnits(l.unitsAfter) : dash}</td>
                                     <td className="px-3 py-3 text-right">{editButton(l, g)}</td>
                                   </tr>
-                                  {l.type === "SELL" && showMatching && (
-                                    <tr>
-                                      <td colSpan={10} className="px-3 pb-3 pt-0 border-l-4 border-l-[var(--color-ochre)]">
-                                        <SaleMatchBox sell={l} groupLines={g.allLines} currency={g.currency} />
-                                      </td>
-                                    </tr>
-                                  )}
-                                </Fragment>
                               ))}
                             </tbody>
                           </table>
@@ -433,11 +358,6 @@ export function TransactionsTable({
                                 <dt className="text-[var(--color-ink-soft)]">Units after</dt>
                                 <dd className="text-right tabular-nums">{l.unitsAfter !== null ? formatUnits(l.unitsAfter) : "—"}</dd>
                               </dl>
-                              {l.type === "SELL" && showMatching && (
-                                <div className="mt-3">
-                                  <SaleMatchBox sell={l} groupLines={g.allLines} currency={g.currency} />
-                                </div>
-                              )}
                               <div className="mt-3 flex justify-end">{editButton(l, g)}</div>
                             </li>
                           ))}

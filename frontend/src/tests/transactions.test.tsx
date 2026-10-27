@@ -238,11 +238,16 @@ describe("the one grouped, editable table", () => {
   it("has an Edit action for every transaction", () => {
     for (const label of ["Edit buy of TST on 5 Jan 2026", "Edit sell of TST on 1 Mar 2026", "Edit buy of XYZ on 1 Feb 2026", "Edit sell of XYZ on 1 Apr 2026"]) expect(html).toContain(`aria-label="${label}"`);
   });
-  it("puts a matching box directly under every sale, showing the purchases it draws on and the figures", () => {
-    expect(html).toContain('data-testid="sale-match"');
-    expect(html).toContain("Purchases this sale draws on");
-    expect(html).toContain("Average-cost method");
-    expect(html).toContain("Cost of the units sold");
+  it("no longer shows the sale details panel under each sale", () => {
+    expect(html).not.toContain('data-testid="sale-match"');
+    expect(html).not.toContain("Purchases this sale draws on");
+    expect(html).not.toContain("Average-cost method");
+    expect(html).not.toContain("Show how each sale was calculated");
+  });
+  it("keeps the security metric values but not a visible header row of labels", () => {
+    expect(html).not.toMatch(/<dt class="text-\[11px\]/);
+    expect(html).toContain("Available units");
+    expect(html).toMatch(/<dt class="sr-only">Available units<\/dt>/);
   });
   it("shows realised profit green and realised loss red", () => {
     expect(html).toContain("+$182");
@@ -270,7 +275,6 @@ describe("the one grouped, editable table", () => {
     const bad = inv({ id: "x", ticker: "BAD", txs: [tx("x1", "BUY", "2026-01-01", 10, 1), tx("x2", "SELL", "2026-02-01", 50, 1)], rows: [row("x1", { seq: 0, totalValue: 10, unitsAfter: 10 }), row("x2", { seq: 1, totalValue: 50, shortfall: true, poolQuantityBefore: 10 })] });
     const out = table({ investments: [bad] });
     expect(out).toContain("Needs review");
-    expect(out).toContain("only 10 were held");
   });
   it("has a helpful empty state", () => {
     expect(table({ investments: [] })).toContain("No shares or ETFs yet");
